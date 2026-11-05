@@ -1,0 +1,74 @@
+/* PALETA DE COLORES OFICIAL - SISTEMA NORA V3 (BOOTSTRAP 5 EXTENSION) */
+:root {
+    /* Principales */
+    --vinotinto-oscuro: #521f29;
+    --crema-claro: #eecfb1;
+    --dorado-suave: #e5b871;
+    --naranja-vibrante: #ff8a00;
+    --naranja-medio: #ffa32b;
+    --gris-arena: #beab94;
+    --marron-claro: #c8a38e;
+    --beige: #d6c4af;
+
+    /* Bandera */
+    --amarillo-bandera: #ffcc00;
+    --azul-bandera: #2147de;
+    --rojo-bandera: #cd1e3e;
+}
+
+body {
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    background-color: var(--beige);
+    margin: 0;
+    padding-top: 160px; /* Offset para el cintillo + navbar fijos */
+    border-top: 8px solid var(--amarillo-bandera);
+}
+
+/* Clases Personalizadas Vinotinto y Dorado */
+.bg-vinotinto { background-color: var(--vinotinto-oscuro) !important; }
+.text-vinotinto { color: var(--vinotinto-oscuro) !important; }
+.border-vinotinto { border-color: var(--vinotinto-oscuro) !important; }
+
+.btn-vinotinto {
+    background-color: var(--vinotinto-oscuro);
+    color: var(--crema-claro);
+    border: none;
+    font-weight: bold;
+    transition: all 0.3s ease;
+}
+
+.btn-vinotinto:hover {
+    background-color: var(--naranja-vibrante);
+    color: white;
+}
+
+/* Cintillo Superior e Identidad Visual Fija */
+.cintillo-superior {
+    width: 100%;
+    height: 100px;
+    background: url('/sistema_nora/assets/img/Banner de dirección 1802x271_Mesa de trabajo 1 copia 5.png') no-repeat center center;
+    background-size: 100% 100%;
+    position: fixed;
+    top: 0;
+    left: 0;
+    z-index: 1030;
+}
+
+.navbar-nora {
+    background-color: #ffffff;
+    height: 60px;
+    position: fixed;
+    top: 100px;
+    left: 0;
+    width: 100%;
+    z-index: 1020;
+    border-bottom: 4px solid var(--vinotinto-oscuro);
+    box-shadow: 0 4px 10px rgba(0,0,0,0.1);
+}
+
+.escuela-nombre {
+    color: var(--vinotinto-oscuro);
+    font-weight: bold;
+    font-size: 0.95rem;
+    text-transform: uppercase;
+}

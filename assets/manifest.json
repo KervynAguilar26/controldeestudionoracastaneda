@@ -1,0 +1,26 @@
+{
+    "name": "Escuela Nora Castañeda - Portales de Campo",
+    "short_name": "Nora Castañeda",
+    "description": "Portales offline de asistencia de comedor e infraestructura para monitores de la Escuela Internacional Nora Castañeda.",
+    "start_url": "./dashboard.php",
+    "scope": "./",
+    "display": "standalone",
+    "orientation": "portrait",
+    "background_color": "#d6c4af",
+    "theme_color": "#521f29",
+    "lang": "es",
+    "icons": [
+        {
+            "src": "img/icono.png",
+            "sizes": "192x192 512x512 any",
+            "type": "image/png",
+            "purpose": "any"
+        },
+        {
+            "src": "img/LogoEscuelaNora_NUEVO.png",
+            "sizes": "any",
+            "type": "image/png",
+            "purpose": "any"
+        }
+    ]
+}
