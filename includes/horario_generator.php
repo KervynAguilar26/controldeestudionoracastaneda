@@ -204,6 +204,9 @@ function horario_generar_cohorte(PDO $pdo, int $id_cohorte): array
         return ['ok' => false, 'mensaje' => 'La malla de esta cohorte no tiene materias registradas.'];
     }
 
+    // Las horas_academicas de la malla son el total del curso; aquí solo se usan
+    // como peso relativo para repartir los bloques semanales disponibles. NO son
+    // la carga docente, que se calcula con los bloques de horarios_secciones.
     $cupo = count($dias) * count($bloques);
     $pesos = [];
     foreach ($materias as $m) {

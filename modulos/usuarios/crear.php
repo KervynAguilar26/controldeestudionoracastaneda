@@ -1,6 +1,7 @@
 <?php
 // /sistema_nora/modulos/usuarios/crear.php
 require_once '../../config/db.php';
+require_once '../../includes/disponibilidad_docente.php';
 require_once '../../includes/header.php';
 
 // Verificar permisos de Superusuario / Administrador
@@ -19,7 +20,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $cargo  = $_POST['cargo_funcion'] ?? 'Servicio Generales';
         $estatus= $_POST['estatus_cuenta'] ?? 'Pendiente';
         $roles_sel = $_POST['roles'] ?? ['trabajador'];
-        $roles_sel = array_values(array_intersect((array)$roles_sel, ['superadmin','admin','defensoria','comedor','cocina','control_estudio','profesor','estudiante','guarderia','trabajador','monitor']));
+        $roles_sel = array_values(array_intersect((array)$roles_sel, ['superadmin','admin','defensoria','comedor','cocina','control_estudio','profesor','estudiante','guarderia','trabajador','monitor','recepcion']));
         if (empty($roles_sel)) {
             throw new Exception("Debe seleccionar al menos un rol válido.");
         }
@@ -63,6 +64,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
         // Determinar tipo de usuario primario
         $tipo_primario = $roles_sel[0] ?? 'trabajador';
+        $es_profesor_nuevo = in_array('profesor', $roles_sel, true);
+
+        // Jornada y disponibilidad docente (rango obligatorio 20 - 40 h)
+        $hmin = intval($_POST['horas_semanales_min'] ?? 20);
+        $hmax = intval($_POST['horas_semanales_max'] ?? 40);
+        if ($hmin < 20 || $hmax > 40 || $hmin > $hmax) {
+            throw new Exception('La jornada docente debe estar entre 20 y 40 horas semanales (mínimo ≤ máximo).');
+        }
+        $disp_json = $es_profesor_nuevo ? docente_disponibilidad_json((array) ($_POST['disponibilidad'] ?? [])) : '';
+        $disp_param = $disp_json === '' ? null : $disp_json;
 
         // Convertir arreglo de roles a formato array PostgreSQL
         $roles_pg = '{' . implode(',', array_map(function($r){ return '"'.trim($r).'"'; }, $roles_sel)) . '}';
@@ -71,16 +82,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $pass_hash = password_hash($cedula, PASSWORD_BCRYPT);
 
         $sql_ins = "INSERT INTO public.usuarios 
-            (cedula, nombre, apellido, fecha_nacimiento, sexo, edad, estado_civil, cargo_funcion, tipo_usuario, roles_asignados, estatus_cuenta, password, correo) 
+            (cedula, nombre, apellido, fecha_nacimiento, sexo, edad, estado_civil, cargo_funcion, tipo_usuario, roles_asignados, estatus_cuenta, password, correo,
+             horas_semanales_min, horas_semanales_max, disponibilidad_horaria) 
             VALUES 
-            (:c, :n, :a, :fn, :sx, :ed, :ec, :car, :tp, :roles, :est, :p, :cor)";
+            (:c, :n, :a, :fn, :sx, :ed, :ec, :car, :tp, :roles, :est, :p, :cor, :hmin, :hmax, :disp)";
 
         $stmt_i = $pdo->prepare($sql_ins);
         $stmt_i->execute([
             ':c' => $cedula, ':n' => $nombre, ':a' => $apellido, ':fn' => $f_nac,
             ':sx' => $sexo, ':ed' => $edad, ':ec' => $est_civil, ':car' => $cargo,
             ':tp' => $tipo_primario, ':roles' => $roles_pg, ':est' => $estatus,
-            ':p' => $pass_hash, ':cor' => 'pendiente_' . $cedula . '@escuelanora.gob.ve'
+            ':p' => $pass_hash, ':cor' => 'pendiente_' . $cedula . '@escuelanora.gob.ve',
+            ':hmin' => $hmin, ':hmax' => $hmax, ':disp' => $disp_param
         ]);
 
         $msg = "¡Llave de Cédula V-$cedula pre-autorizada exitosamente! El usuario ya puede registrarse.";
@@ -142,12 +155,58 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                             <label class="custom-control-label font-weight-bold text-dark" for="rol_mon">Monitor de Campo (Comedor + Infraestructura, offline)</label>
                         </div>
                         <div class="custom-control custom-checkbox mb-2">
+                            <input type="checkbox" name="roles[]" value="recepcion" class="custom-control-input" id="rol_rec">
+                            <label class="custom-control-label font-weight-bold text-dark" for="rol_rec">Recepción</label>
+                        </div>
+                        <div class="custom-control custom-checkbox mb-2">
                             <input type="checkbox" name="roles[]" value="defensoria" class="custom-control-input" id="rol_def">
                             <label class="custom-control-label font-weight-bold text-dark" for="rol_def">Defensoría</label>
                         </div>
                         <div class="custom-control custom-checkbox mb-2">
                             <input type="checkbox" name="roles[]" value="admin" class="custom-control-input" id="rol_adm">
                             <label class="custom-control-label font-weight-bold text-danger" for="rol_adm">Administrador del Sistema</label>
+                        </div>
+                    </div>
+
+                    <!-- SOLO DOCENTES: jornada y disponibilidad -->
+                    <div id="bloque-docente" class="p-3 mb-4 rounded" style="display:none; background-color:#fff8f0; border:2px dashed #ff8a00;">
+                        <h6 class="font-weight-bold mb-3" style="color:#521f29;"><i class="fas fa-clock mr-2 text-warning"></i>Jornada y Disponibilidad Académica del Docente</h6>
+                        <input type="hidden" name="disponibilidad_docente" value="1">
+                        <div class="form-row mb-3">
+                            <div class="col-md-6 form-group">
+                                <label class="font-weight-bold small" style="color:#521f29;">Horas académicas mínimas semanales *</label>
+                                <input type="number" name="horas_semanales_min" min="20" max="40" step="1" value="20" class="form-control font-weight-bold">
+                            </div>
+                            <div class="col-md-6 form-group">
+                                <label class="font-weight-bold small" style="color:#521f29;">Horas académicas máximas semanales *</label>
+                                <input type="number" name="horas_semanales_max" min="20" max="40" step="1" value="40" class="form-control font-weight-bold">
+                            </div>
+                        </div>
+                        <p class="small text-muted mb-2">Marque los días y bloques en los que el docente puede impartir clases. Si no marca ninguno, el sistema lo considerará disponible en todos los bloques.</p>
+                        <div class="table-responsive">
+                            <table id="tabla-disponibilidad-nuevo" class="table table-sm table-bordered text-center mb-0">
+                                <thead style="background-color:#521f29;color:#fff;">
+                                    <tr>
+                                        <th class="text-left">Bloque</th>
+                                        <?php foreach (docente_dias() as $dia): ?><th><?= htmlspecialchars($dia) ?></th><?php endforeach; ?>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <?php foreach (docente_bloques() as $b): ?>
+                                        <tr>
+                                            <td class="text-left font-weight-bold small <?= !$b['clase'] ? 'text-muted' : '' ?>">
+                                                <?= htmlspecialchars($b['etiqueta']) ?>
+                                                <?php if (!$b['clase']): ?><span class="badge badge-light">No impartible</span><?php endif; ?>
+                                            </td>
+                                            <?php foreach (docente_dias() as $dia): ?>
+                                                <td>
+                                                    <input type="checkbox" class="form-check-input" name="disponibilidad[<?= htmlspecialchars($dia) ?>][]" value="<?= $b['inicio'] ?>" <?= !$b['clase'] ? 'disabled' : '' ?>>
+                                                </td>
+                                            <?php endforeach; ?>
+                                        </tr>
+                                    <?php endforeach; ?>
+                                </tbody>
+                            </table>
                         </div>
                     </div>
 
@@ -191,5 +250,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         </div>
     </div>
 </div>
+
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+    const chkProf = document.getElementById('rol_prof');
+    const bloque  = document.getElementById('bloque-docente');
+    if (!chkProf || !bloque) return;
+    const actualizar = () => { bloque.style.display = chkProf.checked ? 'block' : 'none'; };
+    chkProf.addEventListener('change', actualizar);
+    actualizar();
+});
+</script>
 
 <?php require_once '../../includes/footer.php'; ?>

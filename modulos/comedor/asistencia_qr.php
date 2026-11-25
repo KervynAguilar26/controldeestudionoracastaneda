@@ -30,8 +30,8 @@ if (!tiene_permiso(['comedor', 'monitor', 'admin', 'superadmin'], $roles_array))
     </div>
 
     <div class="row justify-content-center">
-        <div class="col-md-6 text-center">
-            
+        <div class="col-12 col-md-6 text-center">
+
             <!-- Selector de Ingesta -->
             <div class="card shadow-sm mb-3 border-0" style="border-radius: 15px; background-color: #521f29;">
                 <div class="card-body p-3 text-white">
@@ -47,7 +47,7 @@ if (!tiene_permiso(['comedor', 'monitor', 'admin', 'superadmin'], $roles_array))
 
             <!-- Visor de la Cámara -->
             <div class="card shadow border-0 p-2" style="border-radius: 20px;">
-                <div id="reader" style="width: 100%; border-radius: 15px; overflow: hidden;"></div>
+                <div id="reader" style="width: 100%; min-height: 240px; border-radius: 15px; overflow: hidden;"></div>
             </div>
 
             <!-- Alerta de Respuesta del Registro -->
@@ -57,8 +57,9 @@ if (!tiene_permiso(['comedor', 'monitor', 'admin', 'superadmin'], $roles_array))
     </div>
 </div>
 
-<!-- Librería Oficial Html5Qrcode Scanner -->
-<script src="https://unpkg.com/html5-qrcode"></script>
+<!-- Librería QR local + capa común móvil (sin dependencia de CDN) -->
+<script src="../../assets/js/html5-qrcode.min.js?v=7"></script>
+<script src="../../assets/js/nora_qr.js?v=8"></script>
 
 <script>
     let ultimoEscan = "";
@@ -118,7 +119,7 @@ if (!tiene_permiso(['comedor', 'monitor', 'admin', 'superadmin'], $roles_array))
 
     function alDetectarQR(textoCodificado, resultado) {
         if (estaProcesando || textoCodificado === ultimoEscan) return;
-        
+
         estaProcesando = true;
         ultimoEscan = textoCodificado;
 
@@ -188,13 +189,14 @@ if (!tiene_permiso(['comedor', 'monitor', 'admin', 'superadmin'], $roles_array))
         }, 2500);
     }
 
-    // Inicializar escáner para móviles y cámaras web
-    let html5QrcodeScanner = new Html5QrcodeScanner(
-        "reader", 
-        { fps: 10, qrbox: { width: 220, height: 220 }, facingMode: "environment" },
-        /* verbose= */ false
-    );
-    html5QrcodeScanner.render(alDetectarQR);
+    // Escáner común: cámara trasera en móvil, con reintentos y alternativa por foto.
+    // No se inicia automáticamente: el usuario toca «Activar cámara» (requerido en iOS).
+    const qrComedorQr = NoraQR.create({
+        elementId: 'reader',
+        fps: 10,
+        qrbox: { width: 220, height: 220 },
+        onDetect: alDetectarQR
+    });
 
     document.addEventListener('DOMContentLoaded', function () {
         actualizarContadorQr();

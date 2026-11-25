@@ -9,6 +9,7 @@ require_once 'includes/qr_generator.php';
 require_once 'includes/certificado_pdf.php';
 
 $folio = trim($_GET['folio'] ?? '');
+$codigo = strtoupper(trim($_GET['codigo'] ?? ''));
 $error = '';
 $resultado = null;   // ['tipo' => ..., 'registro' => ...]
 
@@ -23,29 +24,80 @@ if ($folio !== '') {
         if ($prefijo === 'CERT') {
             $cert = certificado_por_folio($pdo, $folio);
             if ($cert) {
-                $estado = academico_estado_malla($pdo, (int) $cert['id_estudiante'], (int) $cert['id_malla']);
-                $resultado = [
-                    'tipo'     => 'Certificado de Culminación de Estudios',
-                    'registro' => [
-                        'folio'            => $cert['folio'],
-                        'nombre'           => $cert['nombre'],
-                        'apellido'         => $cert['apellido'],
-                        'cedula'           => $cert['cedula'],
-                        'nombre_curso'     => $cert['nombre_programa'],
-                        'tipo_oferta'      => $cert['tipo_oferta'],
-                        'horas_academicas' => $cert['horas_academicas'],
-                        'fecha_emision'    => $cert['fecha_emision'],
-                        'fecha_inscripcion'=> $cert['fecha_inscripcion'] ?? null,
-                        'resultado'        => 'Malla curricular completada (' . $estado['aprobadas'] . '/' . $estado['total_materias'] . ' materias)',
-                        'cohorte'          => $cert['codigo_cohorte'] ?? '—',
-                        'salon'            => $cert['salon_aula'] ?? '—',
-                        'periodo'          => (int) ($cert['num_periodo'] ?? 0),
-                        'total_periodos'   => (int) $cert['total_periodos'],
-                        'estado_malla'     => $estado['completado'] ? 'COMPLETADA' : 'EN PROGRESO',
-                        'total_materias'   => $estado['total_materias'],
-                        'aprobadas'        => $estado['aprobadas'],
-                    ],
-                ];
+                // Un certificado anulado NO debe mostrarse como válido.
+                if (strtolower((string) ($cert['estado'] ?? 'Emitido')) !== 'emitido') {
+                    $error = 'Este certificado fue ANULADO y no tiene validez oficial.';
+                    $cert = null;
+                }
+                // El QR incluye un código aleatorio: verificarlo evita folios falsificados.
+                if ($cert && $codigo !== '') {
+                    $codigoGuardado = strtoupper((string) ($cert['codigo_validacion'] ?? ''));
+                    if ($codigoGuardado === '' || !hash_equals($codigoGuardado, $codigo)) {
+                        $error = 'El código de validación no corresponde a este folio.';
+                        $cert = null;
+                    }
+                }
+            }
+            if ($cert) {
+                if (($cert['origen'] ?? 'Academico') === 'Foro') {
+                    $esParticipante = ($cert['rol_certificado'] ?? '') === 'Participante';
+                    $resultado = [
+                        'tipo'     => 'Certificado de ' . ($cert['rol_certificado'] ?? 'Asistencia')
+                                    . ' en ' . ($cert['tipo_foro'] ?? 'Foro'),
+                        'es_foro'  => true,
+                        'registro' => [
+                            'folio'            => $cert['folio'],
+                            'nombre'           => $cert['nombre'],
+                            'apellido'         => $cert['apellido'],
+                            'cedula'           => $cert['cedula'],
+                            'nombre_curso'     => $cert['foro_nombre'],
+                            'tipo_oferta'      => $cert['tipo_foro'],
+                            'horas_academicas' => $cert['foro_horas'],
+                            'fecha_emision'    => $cert['fecha_emision'],
+                            'fecha_inscripcion'=> null,
+                            'resultado'        => $esParticipante
+                                ? 'Asistencia a ponencia y participación en mesa de trabajo verificadas'
+                                : 'Asistencia a la ponencia verificada',
+                            'cohorte'          => $cert['codigo_foro'] ?? '—',
+                            'salon'            => '—',
+                            'periodo'          => 0,
+                            'total_periodos'   => 0,
+                            'estado_malla'     => 'VERIFICADO',
+                            'total_materias'   => (int) $cert['foro_temas'],
+                            'aprobadas'        => (int) $cert['foro_temas'],
+                            'libro'            => $cert['libro'] ?? '—',
+                            'linea_libro'      => $cert['linea_libro'] ?? '—',
+                            'codigo_validacion'=> $cert['codigo_validacion'] ?? '—',
+                        ],
+                    ];
+                } else {
+                    $estado = academico_estado_malla($pdo, (int) $cert['id_estudiante'], (int) $cert['id_malla']);
+                    $resultado = [
+                        'tipo'     => 'Certificado de Culminación de Estudios',
+                        'registro' => [
+                            'folio'            => $cert['folio'],
+                            'nombre'           => $cert['nombre'],
+                            'apellido'         => $cert['apellido'],
+                            'cedula'           => $cert['cedula'],
+                            'nombre_curso'     => $cert['nombre_programa'],
+                            'tipo_oferta'      => $cert['tipo_oferta'],
+                            'horas_academicas' => $cert['horas_academicas'],
+                            'fecha_emision'    => $cert['fecha_emision'],
+                            'fecha_inscripcion'=> $cert['fecha_inscripcion'] ?? null,
+                            'resultado'        => 'Malla curricular completada (' . $estado['aprobadas'] . '/' . $estado['total_materias'] . ' materias)',
+                            'cohorte'          => $cert['codigo_cohorte'] ?? '—',
+                            'salon'            => $cert['salon_aula'] ?? '—',
+                            'periodo'          => (int) ($cert['num_periodo'] ?? 0),
+                            'total_periodos'   => (int) $cert['total_periodos'],
+                            'estado_malla'     => $estado['completado'] ? 'COMPLETADA' : 'EN PROGRESO',
+                            'total_materias'   => $estado['total_materias'],
+                            'aprobadas'        => $estado['aprobadas'],
+                            'libro'            => $cert['libro'] ?? '—',
+                            'linea_libro'      => $cert['linea_libro'] ?? '—',
+                            'codigo_validacion'=> $cert['codigo_validacion'] ?? '—',
+                        ],
+                    ];
+                }
             }
         }
 
@@ -170,7 +222,9 @@ if ($folio !== '') {
     }
 }
 
-$qrUrl = ($resultado && $folio !== '') ? sistema_qr_url($folio) : '';
+$qrUrl = ($resultado && $folio !== '')
+    ? sistema_qr_url($folio, (string) ($resultado['registro']['codigo_validacion'] ?? ''))
+    : '';
 $qrImg = ($qrUrl !== '') ? sistema_qr_data_uri($qrUrl, 'val') : '';
 ?>
 <!DOCTYPE html>
@@ -206,6 +260,7 @@ $qrImg = ($qrUrl !== '') ? sistema_qr_data_uri($qrUrl, 'val') : '';
                         <label class="font-weight-bold" style="color: #521f29;">Número de Folio / Código de Verificación:</label>
                         <div class="input-group">
                             <input type="text" name="folio" class="form-control font-weight-bold text-center" placeholder="Ej: CERT-2026-00001" value="<?= htmlspecialchars($folio, ENT_QUOTES, 'UTF-8') ?>" required>
+                            <input type="text" name="codigo" class="form-control font-weight-bold text-center" placeholder="Código (opcional)" value="<?= htmlspecialchars($codigo, ENT_QUOTES, 'UTF-8') ?>">
                             <div class="input-group-append">
                                 <button type="submit" class="btn text-white font-weight-bold" style="background-color: #ff8a00;">
                                     <i class="fas fa-search mr-1"></i> VERIFICAR
@@ -233,13 +288,20 @@ $qrImg = ($qrUrl !== '') ? sistema_qr_data_uri($qrUrl, 'val') : '';
                                 <?= htmlspecialchars(mb_strtoupper($r['nombre'] . ' ' . $r['apellido'], 'UTF-8'), ENT_QUOTES, 'UTF-8') ?>
                             </h5>
                             <p class="font-weight-bold text-muted mb-2">Cédula: V-<?= htmlspecialchars($r['cedula'], ENT_QUOTES, 'UTF-8') ?></p>
+                            <?php if (isset($r['libro'])): ?>
+                                <p class="small mb-2 text-muted">
+                                    Libro: <strong><?= htmlspecialchars($r['libro'], ENT_QUOTES, 'UTF-8') ?></strong> &nbsp;|&nbsp;
+                                    Línea: <strong><?= htmlspecialchars((string) $r['linea_libro'], ENT_QUOTES, 'UTF-8') ?></strong> &nbsp;|&nbsp;
+                                    Código: <strong><?= htmlspecialchars((string) $r['codigo_validacion'], ENT_QUOTES, 'UTF-8') ?></strong>
+                                </p>
+                            <?php endif; ?>
 
                             <!-- PERTENENCIA A LA ESCUELA -->
                             <div class="bandera-pertenece p-2 mb-3 font-weight-bold">
                                 <i class="fas fa-shield-alt mr-1"></i>
                                 EL ESTUDIANTE PERTENECE A ESTA ESCUELA
                                 <div class="small font-weight-normal mt-1">
-                                    Inscrito en la cohorte
+                                    <?= !empty($resultado['es_foro']) ? 'Evento registrado' : 'Inscrito en la cohorte' ?>
                                     <strong><?= htmlspecialchars($r['cohorte'], ENT_QUOTES, 'UTF-8') ?></strong>
                                     <?php if (!empty($r['salon']) && $r['salon'] !== '—'): ?>
                                         · Salón <strong><?= htmlspecialchars($r['salon'], ENT_QUOTES, 'UTF-8') ?></strong>
@@ -252,7 +314,9 @@ $qrImg = ($qrUrl !== '') ? sistema_qr_data_uri($qrUrl, 'val') : '';
 
                             <hr style="border-top: 1px dashed #ff8a00;">
 
-                            <p class="mb-1"><small class="text-muted">Programa Aprobado:</small></p>
+                            <p class="mb-1"><small class="text-muted">
+                                <?= !empty($resultado['es_foro']) ? 'Evento / Conversatorio:' : 'Programa Aprobado:' ?>
+                            </small></p>
                             <h6 class="font-weight-bold" style="color: #521f29;"><?= htmlspecialchars($r['nombre_curso'], ENT_QUOTES, 'UTF-8') ?></h6>
 
                             <div class="row mt-3">
@@ -268,12 +332,20 @@ $qrImg = ($qrUrl !== '') ? sistema_qr_data_uri($qrUrl, 'val') : '';
 
                             <div class="row mt-3">
                                 <div class="col-6">
-                                    <small class="text-muted d-block">Avance de malla:</small>
-                                    <strong><?= (int) $r['aprobadas'] ?> / <?= (int) $r['total_materias'] ?> materias</strong>
+                                    <small class="text-muted d-block">
+                                        <?= !empty($resultado['es_foro']) ? 'Temas de la malla:' : 'Avance de malla:' ?>
+                                    </small>
+                                    <strong>
+                                        <?php if (!empty($resultado['es_foro'])): ?>
+                                            <?= (int) $r['total_materias'] ?> temas registrados
+                                        <?php else: ?>
+                                            <?= (int) $r['aprobadas'] ?> / <?= (int) $r['total_materias'] ?> materias
+                                        <?php endif; ?>
+                                    </strong>
                                 </div>
                                 <div class="col-6">
                                     <small class="text-muted d-block">Estado:</small>
-                                    <strong class="text-<?= $r['estado_malla'] === 'COMPLETADA' ? 'success' : 'warning' ?>">
+                                    <strong class="text-<?= in_array($r['estado_malla'], ['COMPLETADA', 'VERIFICADO'], true) ? 'success' : 'warning' ?>">
                                         <?= htmlspecialchars($r['estado_malla'], ENT_QUOTES, 'UTF-8') ?>
                                     </strong>
                                 </div>
@@ -297,7 +369,7 @@ $qrImg = ($qrUrl !== '') ? sistema_qr_data_uri($qrUrl, 'val') : '';
 
                     <div class="small text-muted text-center mt-3">
                         <i class="fas fa-info-circle mr-1"></i>
-                        Folios válidos: <strong>CERT-... (certificados de culminación)</strong>,
+                        Folios válidos: <strong>CERT-... (culminación y foros/conversatorios/seminarios)</strong>,
                         <strong>CONST-... (constancias)</strong>, <strong>BOL-... (boletas de calificaciones)</strong>.
                     </div>
                 </div>

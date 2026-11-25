@@ -103,6 +103,18 @@ $cohortes = $pdo->query($sql_cohortes)->fetchAll(PDO::FETCH_ASSOC);
             <a href="matricula_general.php" class="btn btn-sm font-weight-bold text-white shadow-sm" style="background-color: #cd1e3e; border-radius: 8px;">
                 <i class="fas fa-user-graduate mr-1"></i> Matrícula / Promoción
             </a>
+            <a href="carga_masiva_cedulas.php" class="btn btn-sm font-weight-bold text-white shadow-sm" style="background-color: #6f42c1; border-radius: 8px;">
+                <i class="fas fa-id-card mr-1"></i> Carga por Cédula
+            </a>
+            <a href="certificados.php" class="btn btn-sm font-weight-bold text-white shadow-sm" style="background-color: #1e7e34; border-radius: 8px;">
+                <i class="fas fa-certificate mr-1"></i> Certificados
+            </a>
+            <a href="expedientes_estudiantes.php" class="btn btn-sm font-weight-bold text-white shadow-sm" style="background-color: #17a2b8; border-radius: 8px;">
+                <i class="fas fa-folder-open mr-1"></i> Expedientes
+            </a>
+            <a href="../foros/index.php" class="btn btn-sm font-weight-bold text-white shadow-sm" style="background-color: #2b5876; border-radius: 8px;">
+                <i class="fas fa-comments mr-1"></i> Foros, Conversatorios y Seminarios
+            </a>
         </div>
     </div>
 

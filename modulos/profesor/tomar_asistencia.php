@@ -2,6 +2,7 @@
 // /sistema_nora/modulos/profesor/tomar_asistencia.php
 require_once '../../config/db.php';
 require_once '../../includes/header.php';
+require_once '../../includes/buscador_lista.php';
 
 // Control de acceso: docentes y administradores
 if (!tiene_permiso(['profesor', 'admin', 'superadmin'], $roles_array)) {
@@ -107,8 +108,9 @@ $stmt_l->execute([':coh' => $id_cohorte]);
 $asistencias_hoy = $stmt_l->fetchAll();
 ?>
 
-<!-- Cargar librería QR Scanner -->
-<script src="https://unpkg.com/html5-qrcode"></script>
+<!-- Librería QR local + capa común móvil (sin dependencia de CDN) -->
+<script src="../../assets/js/html5-qrcode.min.js"></script>
+<script src="../../assets/js/nora_qr.js?v=4"></script>
 
 <div class="d-sm-flex align-items-center justify-content-between mb-4">
     <h1 class="h3 mb-0 font-weight-bold" style="color: #521f29;">
@@ -163,7 +165,8 @@ $asistencias_hoy = $stmt_l->fetchAll();
                 <h6 class="m-0 font-weight-bold text-white"><i class="fas fa-users mr-2"></i>Asistencia del Día (<?= date('d/m/Y') ?>)</h6>
             </div>
             <div class="card-body bg-white p-4">
-                <div class="table-responsive">
+                <?php buscador_lista_render('Buscar estudiante por nombre o cédula…', '#tablaAsistenciaClases table'); ?>
+                <div class="table-responsive" id="tablaAsistenciaClases">
                     <table class="table table-hover align-middle">
                         <thead style="background-color: #ff8a00; color: #521f29;">
                             <tr>
@@ -219,21 +222,14 @@ $asistencias_hoy = $stmt_l->fetchAll();
 </div>
 
 <script>
-let qrDocente = null;
 let ultimoEscaneo = "";
 let tiempoUltimoEscaneo = 0;
 
-function iniciarCamaraDocente() {
-    if (!qrDocente) {
-        qrDocente = new Html5Qrcode("lector_camara_docente");
-    }
-    
-    document.getElementById('qrStatusMsg').innerText = "Cámara activa. Escanee códigos QR seguidos...";
-
-    qrDocente.start(
-        { facingMode: "environment" }, 
-        { fps: 15, qrbox: 220 }, 
-        (decodedText) => {
+const qrDocente = NoraQR.create({
+    elementId: 'lector_camara_docente',
+    fps: 15,
+    qrbox: 220,
+    onDetect: (decodedText) => {
             let ahora = Date.now();
             // Evitar lecturas duplicadas en menos de 3 segundos del mismo carnet
             if (decodedText === ultimoEscaneo && (ahora - tiempoUltimoEscaneo) < 3000) {
@@ -272,29 +268,33 @@ function iniciarCamaraDocente() {
             .catch(error => {
                 console.error('Error:', error);
             });
-        },
-        (errorMessage) => {
-            // Errores de escaneo en tiempo real por fotograma se ignoran para no interrumpir
-        }
-    ).catch(err => {
-        console.error("Error al iniciar la cámara:", err);
-        document.getElementById('qrStatusMsg').innerText = "Error al iniciar la cámara del dispositivo.";
-    });
+    },
+    onState: function (estado, mensaje) {
+        var msg = document.getElementById('qrStatusMsg');
+        if (!msg) { return; }
+        if (estado === 'started') { msg.innerText = "Cámara activa. Escanee códigos QR seguidos..."; }
+        else if (estado === 'starting') { msg.innerText = "Activando cámara..."; }
+        else if (estado === 'stopped') { msg.innerText = "Cámara detenida."; }
+        else if (estado === 'file') { msg.innerText = "QR leído desde imagen."; }
+        else if (estado === 'error') { msg.innerText = mensaje || "No se pudo activar la cámara."; }
+    }
+});
+
+function iniciarCamaraDocente() {
+    qrDocente.start();
 }
 
 function detenerCamaraDocente() {
-    if (qrDocente && qrDocente.isScanning) {
-        qrDocente.stop().then(() => {
-            qrDocente.clear();
-        }).catch(err => {
-            console.error("Error al detener la cámara:", err);
-        });
-    }
+    qrDocente.stop();
 }
 
 // Asegurar que la cámara se detenga al cerrar el modal por cualquier medio
-$('#modalQRProfesor').on('hidden.bs.modal', function () {
-    detenerCamaraDocente();
+document.addEventListener('DOMContentLoaded', function () {
+    if (window.jQuery) {
+        jQuery('#modalQRProfesor').on('hidden.bs.modal', function () {
+            detenerCamaraDocente();
+        });
+    }
 });
 </script>
 

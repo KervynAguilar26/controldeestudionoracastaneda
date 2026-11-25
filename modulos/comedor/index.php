@@ -30,8 +30,9 @@ try {
 }
 ?>
 
-<!-- Cargar librería oficial Html5Qrcode Scanner -->
-<script src="https://unpkg.com/html5-qrcode"></script>
+<!-- Librería QR local + capa común móvil (sin dependencia de CDN) -->
+<script src="../../assets/js/html5-qrcode.min.js"></script>
+<script src="../../assets/js/nora_qr.js?v=4"></script>
 
 <div class="d-sm-flex align-items-center justify-content-between mb-4">
     <h1 class="h3 mb-0 font-weight-bold" style="color: #521f29;">
@@ -271,25 +272,14 @@ function sincronizarPendientes() {
 }
 
 // --- LÓGICA DE CÁMARA CONTINUA (CÓDIGO QR EN BUCLE) ---
-let html5QrCode = null;
 let procesandoScan = false;
 let ultimaCedula = "";
 
-function iniciarCamaraRapida() {
-    procesandoScan = false;
-    ultimaCedula = "";
-    document.getElementById('alerta_marcaje_rapido').innerHTML = '';
-
-    if (!html5QrCode) {
-        html5QrCode = new Html5Qrcode("lector_camara");
-    }
-
-    const config = { fps: 15, qrbox: { width: 220, height: 220 } };
-
-    html5QrCode.start(
-        { facingMode: "environment" }, 
-        config, 
-        (decodedText) => {
+const qrComedor = NoraQR.create({
+    elementId: 'lector_camara',
+    fps: 15,
+    qrbox: { width: 220, height: 220 },
+    onDetect: (decodedText) => {
             if (procesandoScan || decodedText === ultimaCedula) return;
             
             procesandoScan = true;
@@ -352,19 +342,18 @@ function iniciarCamaraRapida() {
                 procesandoScan = false;
                 ultimaCedula = "";
             }, 2000);
-        }
-    ).catch(err => {
-        document.getElementById('alerta_marcaje_rapido').innerHTML = `
-            <div class="alert alert-danger font-weight-bold mb-0">No se pudo activar la cámara del dispositivo.</div>`;
-    });
+    }
+});
+
+function iniciarCamaraRapida() {
+    procesandoScan = false;
+    ultimaCedula = "";
+    document.getElementById('alerta_marcaje_rapido').innerHTML = '';
+    qrComedor.start();
 }
 
 function detenerCamara() {
-    if (html5QrCode && html5QrCode.isScanning) {
-        html5QrCode.stop().then(() => {
-            html5QrCode.clear();
-        }).catch(err => {});
-    }
+    qrComedor.stop();
 }
 
 document.addEventListener('DOMContentLoaded', () => {

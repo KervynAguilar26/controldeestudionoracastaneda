@@ -119,6 +119,56 @@ if (function_exists('csrf_token')) {
             color: #521f29 !important;
         }
 
+        /* ══════════ SIDEBAR ORDENADO (sin desbordamiento) ══════════ */
+        .sidebar {
+            overflow-x: hidden !important;
+            overflow-y: auto !important;
+        }
+        .sidebar .nav-item { min-width: 0; }
+        .sidebar .nav-item .nav-link {
+            width: 100% !important;
+            text-align: left !important;
+            padding: 0.55rem 1rem !important;
+            line-height: 1.25;
+        }
+        .sidebar .nav-item .nav-link i { width: 1.25rem; }
+        .sidebar .collapse,
+        .sidebar .collapsing {
+            position: static !important;
+            left: auto !important;
+            top: auto !important;
+            z-index: auto !important;
+            width: 100% !important;
+        }
+        .sidebar .collapse-inner {
+            min-width: 0 !important;
+            width: 100% !important;
+            border-radius: 0 !important;
+            padding: 0.35rem 0 !important;
+            box-shadow: none !important;
+        }
+        .sidebar .collapse-item {
+            white-space: normal !important;
+            overflow-wrap: anywhere;
+            word-break: break-word;
+            line-height: 1.25;
+            padding: 0.45rem 0.85rem !important;
+            margin: 0 !important;
+            font-size: 0.82rem;
+            border-radius: 6px;
+        }
+        .sidebar .collapse-item:hover { background-color: #fff3e2 !important; }
+        .sidebar .sidebar-heading {
+            padding: 0.5rem 1rem !important;
+            font-size: 0.72rem;
+            letter-spacing: 0.08em;
+            white-space: normal;
+        }
+        .sidebar.toggled .collapse-item { display: none !important; }
+
+        /* Anclas internas de los portales (evita que queden tapadas por la topbar) */
+        #mi-horario, #mis-secciones { scroll-margin-top: 90px !important; }
+
         /* ══════════ RESPONSIVE MÓVIL ══════════ */
         @media (max-width: 767.98px) {
             .container-fluid { padding-left: 12px; padding-right: 12px; }
@@ -149,7 +199,7 @@ if (function_exists('csrf_token')) {
 
             <hr class="sidebar-divider my-0">
 
-            <?php if (tiene_permiso(['superadmin', 'admin', 'control_estudio', 'guarderia', 'profesor', 'comedor', 'defensoria', 'monitor'], $roles_array)): ?>
+            <?php if (tiene_permiso(['superadmin', 'admin', 'control_estudio', 'guarderia', 'profesor', 'comedor', 'defensoria', 'monitor', 'recepcion'], $roles_array)): ?>
                 <li class="nav-item active">
                     <a class="nav-link" href="<?= $path_prefix ?>dashboard.php">
                         <i class="fas fa-fw fa-tachometer-alt"></i>
@@ -168,62 +218,208 @@ if (function_exists('csrf_token')) {
             <hr class="sidebar-divider">
             <div class="sidebar-heading">Módulos</div>
 
+            <!-- ═══════════ CONTROL DE ESTUDIO ═══════════ -->
+            <?php if (tiene_permiso(['superadmin', 'admin', 'control_estudio'], $roles_array)): ?>
             <li class="nav-item">
-                <a class="nav-link collapsed" href="#" data-toggle="collapse" data-target="#collapseModulos" aria-expanded="true" aria-controls="collapseModulos">
-                    <i class="fas fa-fw fa-folder"></i>
-                    <span>Gestión Académica</span>
+                <a class="nav-link collapsed" href="#" data-toggle="collapse" data-target="#collapseControl" aria-controls="collapseControl">
+                    <i class="fas fa-fw fa-university"></i>
+                    <span>Control de Estudio</span>
                 </a>
-                <div id="collapseModulos" class="collapse" data-parent="#accordionSidebar">
+                <div id="collapseControl" class="collapse" data-parent="#accordionSidebar">
                     <div class="bg-white py-2 collapse-inner rounded">
-                        
-                        <?php if (tiene_permiso(['superadmin', 'admin', 'control_estudio'], $roles_array)): ?>
-                            <a class="collapse-item font-weight-bold" style="color: #521f29;" href="<?= $path_prefix ?>modulos/control_estudio/index.php">Control de Estudio</a>
-                        <?php endif; ?>
-
-                        <?php if (tiene_permiso(['superadmin', 'comedor', 'monitor'], $roles_array)): ?>
-                            <a class="collapse-item font-weight-bold" style="color: #521f29;" href="<?= $path_prefix ?>modulos/comedor/index.php">Comedor</a>
-                            <a class="collapse-item font-weight-bold" style="color: #521f29;" href="<?= $path_prefix ?>modulos/comedor/asistencia_qr.php">Escáner QR Comedor</a>
-                        <?php endif; ?>
-
-                        <?php if (tiene_permiso(['monitor'], $roles_array)): ?>
-                            <a class="collapse-item font-weight-bold" style="color: #521f29;" href="<?= $path_prefix ?>modulos/configuracion/infra_movil.php">Registro de Infraestructura</a>
-                        <?php endif; ?>
-
-                        <?php if (tiene_permiso(['superadmin', 'defensoria'], $roles_array)): ?>
-                            <a class="collapse-item font-weight-bold" style="color: #521f29;" href="<?= $path_prefix ?>modulos/defensoria/index.php">Defensoría</a>
-                        <?php endif; ?>
-
-                        <?php if (tiene_permiso(['superadmin', 'guarderia'], $roles_array)): ?>
-                            <a class="collapse-item font-weight-bold" style="color: #521f29;" href="<?= $path_prefix ?>modulos/guarderia/index.php">Centro de Cuidado Infantil</a>
-                        <?php endif; ?>
-
-                        <?php if (tiene_permiso(['superadmin', 'profesor'], $roles_array)): ?>
-                            <a class="collapse-item font-weight-bold" style="color: #521f29;" href="<?= $path_prefix ?>modulos/profesor/index.php">Módulo Profesor</a>
-                        <?php endif; ?>
-
-                        <?php if (tiene_permiso(['superadmin', 'admin', 'control_estudio', 'estudiante'], $roles_array)): ?>
-                            <a class="collapse-item font-weight-bold" style="color: #521f29;" href="<?= $path_prefix ?>modulos/estudiante/mi_aula_virtual.php">Mi Aula Virtual (Horario y Notas)</a>
-                        <?php endif; ?>
-
-                        <?php if (tiene_permiso(['superadmin', 'admin'], $roles_array)): ?>
-                            <div class="dropdown-divider"></div>
-                            <a class="collapse-item font-weight-bold" style="color: #521f29;" href="<?= $path_prefix ?>modulos/usuarios/index.php">Gestión de Usuarios</a>
-                            <a class="collapse-item font-weight-bold" style="color: #521f29;" href="<?= $path_prefix ?>modulos/reportes/informes_movimiento.php">Reportes e Informes</a>
-                            <a class="collapse-item font-weight-bold" style="color: #521f29;" href="<?= $path_prefix ?>modulos/configuracion/autoridades.php">Autoridades Escuela</a>
-                            <a class="collapse-item font-weight-bold" style="color: #521f29;" href="<?= $path_prefix ?>modulos/configuracion/gestion_infraestructura.php">Gestión de Infraestructura</a>
-                        <?php endif; ?>
-
-                        <?php if (tiene_permiso(['superadmin', 'admin', 'control_estudio', 'profesor'], $roles_array) && !tiene_permiso(['superadmin', 'admin'], $roles_array)): ?>
-                            <div class="dropdown-divider"></div>
-                        <?php endif; ?>
-                        <?php if (tiene_permiso(['superadmin', 'admin', 'control_estudio', 'profesor'], $roles_array)): ?>
-                            <a class="collapse-item font-weight-bold" style="color: #521f29;" href="<?= $path_prefix ?>modulos/usuarios/carga_masiva_estudiantes.php">Matrícula Masiva Estudiantes</a>
-                            <a class="collapse-item font-weight-bold" style="color: #521f29;" href="<?= $path_prefix ?>modulos/configuracion/dormitorios.php">Dormitorios y Pernoctas</a>
-                        <?php endif; ?>
-
+                        <a class="collapse-item font-weight-bold" style="color: #521f29;" href="<?= $path_prefix ?>modulos/control_estudio/index.php">Panel de Control de Estudio</a>
+                        <a class="collapse-item font-weight-bold" style="color: #521f29;" href="<?= $path_prefix ?>modulos/control_estudio/crear_malla.php">Diseñar Malla Curricular</a>
+                        <a class="collapse-item font-weight-bold" style="color: #521f29;" href="<?= $path_prefix ?>modulos/control_estudio/catalogo_modulos.php">Catálogo de Módulos</a>
+                        <a class="collapse-item font-weight-bold" style="color: #521f29;" href="<?= $path_prefix ?>modulos/control_estudio/crear_cohorte.php">Aperturar Sección</a>
+                        <a class="collapse-item font-weight-bold" style="color: #521f29;" href="<?= $path_prefix ?>modulos/control_estudio/matricula_general.php">Matrícula General</a>
+                        <div class="dropdown-divider"></div>
+                        <a class="collapse-item font-weight-bold" style="color: #521f29;" href="<?= $path_prefix ?>modulos/control_estudio/carga_masiva_cedulas.php">Carga Masiva por Cédula</a>
+                        <a class="collapse-item font-weight-bold" style="color: #521f29;" href="<?= $path_prefix ?>modulos/control_estudio/certificados.php">Certificados</a>
+                        <a class="collapse-item font-weight-bold" style="color: #521f29;" href="<?= $path_prefix ?>modulos/control_estudio/expedientes_estudiantes.php">Expedientes Académicos</a>
                     </div>
                 </div>
             </li>
+            <?php endif; ?>
+
+            <!-- ═══════════ CATÁLOGO ACADÉMICO (todos los roles) ═══════════ -->
+            <li class="nav-item">
+                <a class="nav-link" href="<?= $path_prefix ?>modulos/control_estudio/catalogo_modulos.php">
+                    <i class="fas fa-fw fa-th-list"></i>
+                    <span>Catálogo de Módulos</span>
+                </a>
+            </li>
+
+            <!-- ═══════════ FOROS, CONVERSATORIOS Y SEMINARIOS ═══════════ -->
+            <?php if (tiene_permiso(['superadmin', 'admin', 'control_estudio', 'profesor', 'estudiante'], $roles_array)): ?>
+            <li class="nav-item">
+                <a class="nav-link collapsed" href="#" data-toggle="collapse" data-target="#collapseForos" aria-controls="collapseForos">
+                    <i class="fas fa-fw fa-comments"></i>
+                    <span>Foros, Conversatorios y Seminarios</span>
+                </a>
+                <div id="collapseForos" class="collapse" data-parent="#accordionSidebar">
+                    <div class="bg-white py-2 collapse-inner rounded">
+                        <?php if (tiene_permiso(['superadmin', 'admin', 'control_estudio', 'profesor'], $roles_array)): ?>
+                            <a class="collapse-item font-weight-bold" style="color: #521f29;" href="<?= $path_prefix ?>modulos/foros/index.php">Panel de Foros</a>
+                            <a class="collapse-item font-weight-bold" style="color: #521f29;" href="<?= $path_prefix ?>modulos/foros/gestionar_evento.php">Configurar Evento y Malla</a>
+                            <a class="collapse-item font-weight-bold" style="color: #521f29;" href="<?= $path_prefix ?>modulos/foros/participantes.php">Participantes</a>
+                            <?php if (tiene_permiso(['superadmin', 'admin', 'control_estudio', 'recepcion'], $roles_array)): ?>
+                                <a class="collapse-item font-weight-bold" style="color: #521f29;" href="<?= $path_prefix ?>modulos/recepcion/registrar_estudiante_pernocta.php">Pre-registro (Recepción)</a>
+                            <?php endif; ?>
+                            <a class="collapse-item font-weight-bold" style="color: #521f29;" href="<?= $path_prefix ?>modulos/foros/asistencias.php">Asistencia Interna</a>
+                            <a class="collapse-item font-weight-bold" style="color: #521f29;" href="<?= $path_prefix ?>modulos/foros/mesas.php">Mesas de Trabajo</a>
+                            <a class="collapse-item font-weight-bold" style="color: #521f29;" href="<?= $path_prefix ?>modulos/foros/informes.php">Informes de Mesa</a>
+                            <a class="collapse-item font-weight-bold" style="color: #521f29;" href="<?= $path_prefix ?>modulos/foros/certificados.php">Certificados de Foros</a>
+                        <?php endif; ?>
+                        <?php if (tiene_permiso(['estudiante'], $roles_array)): ?>
+                            <a class="collapse-item font-weight-bold" style="color: #521f29;" href="<?= $path_prefix ?>modulos/foros/mis_foros.php">Mis Foros</a>
+                            <a class="collapse-item font-weight-bold" style="color: #521f29;" href="<?= $path_prefix ?>modulos/foros/mi_informe.php">Mi Informe de Mesa</a>
+                            <a class="collapse-item font-weight-bold" style="color: #521f29;" href="<?= $path_prefix ?>modulos/foros/mis_certificados.php">Mis Certificados</a>
+                        <?php endif; ?>
+                    </div>
+                </div>
+            </li>
+            <?php endif; ?>
+
+            <!-- ═══════════ EVENTOS CON PERNOCTA ═══════════ -->
+            <?php if (tiene_permiso(['superadmin', 'admin', 'control_estudio', 'profesor', 'recepcion'], $roles_array)): ?>
+            <li class="nav-item">
+                <a class="nav-link collapsed" href="#" data-toggle="collapse" data-target="#collapsePernocta" aria-controls="collapsePernocta">
+                    <i class="fas fa-fw fa-bed"></i>
+                    <span>Pernocta y Dormitorios</span>
+                </a>
+                <div id="collapsePernocta" class="collapse" data-parent="#accordionSidebar">
+                    <div class="bg-white py-2 collapse-inner rounded">
+                        <a class="collapse-item font-weight-bold" style="color: #521f29;" href="<?= $path_prefix ?>modulos/configuracion/dormitorios.php">Dormitorios y Pernoctas</a>
+                    </div>
+                </div>
+            </li>
+            <?php endif; ?>
+
+            <!-- NOTA: los roles de estos tres módulos quedan con la configuración actual
+                 hasta que se confirme la definición final de tipos de usuario. -->
+
+            <!-- ═══════════ DEFENSORÍA ═══════════ -->
+            <?php if (tiene_permiso(['superadmin', 'admin', 'defensoria'], $roles_array)): ?>
+            <li class="nav-item">
+                <a class="nav-link collapsed" href="#" data-toggle="collapse" data-target="#collapseDefensoria" aria-controls="collapseDefensoria">
+                    <i class="fas fa-fw fa-balance-scale"></i>
+                    <span>Defensoría</span>
+                </a>
+                <div id="collapseDefensoria" class="collapse" data-parent="#accordionSidebar">
+                    <div class="bg-white py-2 collapse-inner rounded">
+                        <a class="collapse-item font-weight-bold" style="color: #521f29;" href="<?= $path_prefix ?>modulos/defensoria/index.php">Panel de Casos</a>
+                        <a class="collapse-item font-weight-bold" style="color: #521f29;" href="<?= $path_prefix ?>modulos/defensoria/crear.php">Nuevo Expediente</a>
+                    </div>
+                </div>
+            </li>
+            <?php endif; ?>
+
+            <!-- ═══════════ CUIDADOS INFANTILES ═══════════ -->
+            <?php if (tiene_permiso(['superadmin', 'admin', 'guarderia'], $roles_array)): ?>
+            <li class="nav-item">
+                <a class="nav-link collapsed" href="#" data-toggle="collapse" data-target="#collapseCuidados" aria-controls="collapseCuidados">
+                    <i class="fas fa-fw fa-baby-carriage"></i>
+                    <span>Cuidados Infantiles</span>
+                </a>
+                <div id="collapseCuidados" class="collapse" data-parent="#accordionSidebar">
+                    <div class="bg-white py-2 collapse-inner rounded">
+                        <a class="collapse-item font-weight-bold" style="color: #521f29;" href="<?= $path_prefix ?>modulos/guarderia/index.php">Panel del Centro de Cuidado</a>
+                        <a class="collapse-item font-weight-bold" style="color: #521f29;" href="<?= $path_prefix ?>modulos/guarderia/crear.php">Inscribir Niño(a)</a>
+                        <a class="collapse-item font-weight-bold" style="color: #521f29;" href="<?= $path_prefix ?>modulos/guarderia/asistencia.php">Registrar Asistencia</a>
+                    </div>
+                </div>
+            </li>
+            <?php endif; ?>
+
+            <!-- ═══════════ RECEPCIÓN ═══════════ -->
+            <?php if (tiene_permiso(['superadmin', 'admin', 'recepcion'], $roles_array)): ?>
+            <li class="nav-item">
+                <a class="nav-link collapsed" href="#" data-toggle="collapse" data-target="#collapseRecepcion" aria-controls="collapseRecepcion">
+                    <i class="fas fa-fw fa-door-open"></i>
+                    <span>Recepción</span>
+                </a>
+                <div id="collapseRecepcion" class="collapse" data-parent="#accordionSidebar">
+                    <div class="bg-white py-2 collapse-inner rounded">
+                        <a class="collapse-item font-weight-bold" style="color: #521f29;" href="<?= $path_prefix ?>modulos/recepcion/index.php">Panel del Día</a>
+                        <a class="collapse-item font-weight-bold" style="color: #521f29;" href="<?= $path_prefix ?>modulos/recepcion/registrar_visita.php">Registrar Visita</a>
+                        <a class="collapse-item font-weight-bold" style="color: #521f29;" href="<?= $path_prefix ?>modulos/recepcion/registrar_estudiante_pernocta.php">Pre-registro de Participantes</a>
+                    </div>
+                </div>
+            </li>
+            <?php endif; ?>
+
+            <!-- ═══════════ ÁREA DEL ESTUDIANTE ═══════════ -->
+            <?php if (tiene_permiso(['superadmin', 'admin', 'control_estudio', 'estudiante'], $roles_array)): ?>
+            <li class="nav-item">
+                <a class="nav-link collapsed" href="#" data-toggle="collapse" data-target="#collapseEstudiante" aria-controls="collapseEstudiante">
+                    <i class="fas fa-fw fa-user-graduate"></i>
+                    <span>Área del Estudiante</span>
+                </a>
+                <div id="collapseEstudiante" class="collapse" data-parent="#accordionSidebar">
+                    <div class="bg-white py-2 collapse-inner rounded">
+                        <a class="collapse-item font-weight-bold" style="color: #521f29;" href="<?= $path_prefix ?>modulos/estudiante/mi_aula_virtual.php">Mi Aula Virtual</a>
+                        <a class="collapse-item font-weight-bold" style="color: #521f29;" href="<?= $path_prefix ?>modulos/estudiante/expediente_academico.php">Mi Expediente Académico</a>
+                    </div>
+                </div>
+            </li>
+            <?php endif; ?>
+
+            <!-- ═══════════ PORTAL DOCENTE ═══════════ -->
+            <?php if (tiene_permiso(['superadmin', 'admin', 'control_estudio', 'profesor'], $roles_array)): ?>
+            <li class="nav-item">
+                <a class="nav-link collapsed" href="#" data-toggle="collapse" data-target="#collapseDocente" aria-controls="collapseDocente">
+                    <i class="fas fa-fw fa-chalkboard-teacher"></i>
+                    <span>Portal Docente</span>
+                </a>
+                <div id="collapseDocente" class="collapse" data-parent="#accordionSidebar">
+                    <div class="bg-white py-2 collapse-inner rounded">
+                        <a class="collapse-item font-weight-bold" style="color: #521f29;" href="<?= $path_prefix ?>modulos/profesor/index.php">Panel Docente</a>
+                        <a class="collapse-item font-weight-bold" style="color: #521f29;" href="<?= $path_prefix ?>modulos/profesor/index.php#mi-horario">Mi Horario (presione el botón)</a>
+                        <a class="collapse-item font-weight-bold" style="color: #521f29;" href="<?= $path_prefix ?>modulos/profesor/index.php#mis-secciones">Mis Secciones</a>
+                        <a class="collapse-item font-weight-bold" style="color: #521f29;" href="<?= $path_prefix ?>modulos/foros/mis_foros.php">Mis Foros</a>
+                    </div>
+                </div>
+            </li>
+            <?php endif; ?>
+
+            <!-- ═══════════ OTROS MÓDULOS ═══════════ -->
+            <?php if (tiene_permiso(['comedor', 'monitor'], $roles_array)): ?>
+            <li class="nav-item">
+                <a class="nav-link collapsed" href="#" data-toggle="collapse" data-target="#collapseOtros" aria-controls="collapseOtros">
+                    <i class="fas fa-fw fa-th"></i>
+                    <span>Otros Módulos</span>
+                </a>
+                <div id="collapseOtros" class="collapse" data-parent="#accordionSidebar">
+                    <div class="bg-white py-2 collapse-inner rounded">
+                        <?php if (tiene_permiso(['comedor'], $roles_array)): ?>
+                            <a class="collapse-item font-weight-bold" style="color: #521f29;" href="<?= $path_prefix ?>modulos/comedor/index.php">Comedor</a>
+                            <a class="collapse-item font-weight-bold" style="color: #521f29;" href="<?= $path_prefix ?>modulos/comedor/asistencia_qr.php">Escáner QR Comedor</a>
+                        <?php endif; ?>
+                        <?php if (tiene_permiso(['monitor'], $roles_array)): ?>
+                            <a class="collapse-item font-weight-bold" style="color: #521f29;" href="<?= $path_prefix ?>modulos/configuracion/infra_movil.php">Registro de Infraestructura</a>
+                        <?php endif; ?>
+                    </div>
+                </div>
+            </li>
+            <?php endif; ?>
+
+            <!-- ═══════════ CONFIGURACIÓN ═══════════ -->
+            <?php if (tiene_permiso(['superadmin', 'admin'], $roles_array)): ?>
+            <li class="nav-item">
+                <a class="nav-link collapsed" href="#" data-toggle="collapse" data-target="#collapseConfig" aria-controls="collapseConfig">
+                    <i class="fas fa-fw fa-cogs"></i>
+                    <span>Configuración</span>
+                </a>
+                <div id="collapseConfig" class="collapse" data-parent="#accordionSidebar">
+                    <div class="bg-white py-2 collapse-inner rounded">
+                        <a class="collapse-item font-weight-bold" style="color: #521f29;" href="<?= $path_prefix ?>modulos/usuarios/index.php">Gestión de Usuarios</a>
+                        <a class="collapse-item font-weight-bold" style="color: #521f29;" href="<?= $path_prefix ?>modulos/reportes/informes_movimiento.php">Reportes e Informes</a>
+                        <a class="collapse-item font-weight-bold" style="color: #521f29;" href="<?= $path_prefix ?>modulos/configuracion/autoridades.php">Autoridades Escuela</a>
+                        <a class="collapse-item font-weight-bold" style="color: #521f29;" href="<?= $path_prefix ?>modulos/configuracion/gestion_infraestructura.php">Gestión de Infraestructura</a>
+                    </div>
+                </div>
+            </li>
+            <?php endif; ?>
 
             <hr class="sidebar-divider d-none d-md-block">
             <div class="text-center d-none d-md-inline">

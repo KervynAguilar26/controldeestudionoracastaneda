@@ -60,7 +60,8 @@ try {
     certificado_pdf_output(
         [['ins' => $inscripcion, 'cert' => $certificado]],
         $nombre,
-        true
+        true,
+        certificado_config($pdo)
     );
 } catch (Throwable $e) {
     cert_error_pagina('Certificado no disponible', $e->getMessage(), 400);

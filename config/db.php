@@ -1,7 +1,7 @@
 <?php
 // /sistema_nora/config/db.php
 
-$host     = '127.0.0.1';
+$host     = 'localhost';
 $port     = '5432';
 $user     = 'postgres';
 $password = '123456';

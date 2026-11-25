@@ -1,10 +1,12 @@
 <?php
 // /sistema_nora/modulos/guarderia/imprimir_ficha.php
 require_once '../../config/db.php';
+require_once '../../includes/representante_ubicacion.php';
 
-// Control de acceso: exclusivo de Guardería / Administración
-session_start();
+// Control de acceso: exclusivo de Centro de Cuidados Infantiles / Administración
+if (session_status() === PHP_SESSION_NONE) { session_start(); }
 $roles_gf = $_SESSION['roles_asignados'] ?? [$_SESSION['tipo_usuario'] ?? ''];
+if (!is_array($roles_gf)) { $roles_gf = [$roles_gf]; }
 if (empty($_SESSION['id_usuario'])
     || !(in_array('superadmin', $roles_gf) || in_array('admin', $roles_gf) || in_array('guarderia', $roles_gf))) {
     http_response_code(403);
@@ -28,12 +30,13 @@ if (!$nino) die("Ficha no encontrada.");
 $fnac = new DateTime($nino['fecha_nacimiento']);
 $hoy = new DateTime();
 $edad = $hoy->diff($fnac)->y;
+$ubicacion_rep = representante_ubicacion($pdo, (int) $nino['id_representante']);
 ?>
 <!DOCTYPE html>
 <html lang="es">
 <head>
     <meta charset="UTF-8">
-    <title>Ficha de Inscripción - Guardería</title>
+    <title>Ficha de Inscripción - Centro de Cuidados Infantiles </title>
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@4.6.2/dist/css/bootstrap.min.css">
     <style>
         body { background: #fff; font-family: sans-serif; }
@@ -52,7 +55,7 @@ $edad = $hoy->diff($fnac)->y;
         <img src="../../assets/img/Logo del Ministerio 999 x 150-01.png" style="height: 40px;" onerror="this.style.display='none'">
         <div class="text-center">
             <h6 class="m-0 font-weight-bold" style="color: #521f29;">ESCUELA INTERNACIONAL "NORA CASTAÑEDA"</h6>
-            <small class="font-weight-bold text-muted">CENTRO DE CUIDADO INFANTIL / GUARDERÍA</small>
+            <small class="font-weight-bold text-muted">CENTRO DE CUIDADOS INFANTILES</small>
         </div>
         <img src="../../assets/img/LogoEscuelaNora_NUEVO.PNG" style="height: 50px;" onerror="this.style.display='none'">
     </div>
@@ -73,8 +76,21 @@ $edad = $hoy->diff($fnac)->y;
         <p class="mb-0"><strong>Teléfono de Contacto:</strong> <?= htmlspecialchars($nino['telefono_rep'] ?? 'S/D') ?></p>
     </div>
 
+    <div class="p-3 bg-light rounded border mb-3">
+        <h6 class="font-weight-bold" style="color: #521f29;">3. DÓNDE HACE VIDA EL REPRESENTANTE</h6>
+        <p class="mb-1"><strong>Condición en la escuela:</strong> <?= htmlspecialchars($ubicacion_rep['rol']) ?></p>
+        <?php if ($ubicacion_rep['detalle']): ?>
+            <?php foreach ($ubicacion_rep['detalle'] as $dato): ?>
+                <p class="mb-1"><strong><?= htmlspecialchars($dato[0]) ?>:</strong> <?= htmlspecialchars($dato[1]) ?></p>
+            <?php endforeach; ?>
+        <?php else: ?>
+            <p class="mb-0 text-muted"><?= htmlspecialchars($ubicacion_rep['texto']) ?></p>
+        <?php endif; ?>
+        <small class="text-muted">Esta ubicación permite a la cuidadora localizar al representante dentro de los espacios de la escuela.</small>
+    </div>
+
     <div class="p-3 bg-light rounded border mb-4">
-        <h6 class="font-weight-bold" style="color: #521f29;">3. OBSERVACIONES MÉDICAS Y CUIDADOS ESPECIALES</h6>
+        <h6 class="font-weight-bold" style="color: #521f29;">4. OBSERVACIONES MÉDICAS Y CUIDADOS ESPECIALES</h6>
         <p class="mb-0 text-muted"><?= htmlspecialchars($nino['observaciones'] ?? 'Sin observaciones registradas.') ?></p>
     </div>
 
@@ -83,7 +99,7 @@ $edad = $hoy->diff($fnac)->y;
             <div style="border-top: 1px solid #333; width: 80%; margin: 0 auto;">Firma del Representante</div>
         </div>
         <div class="col-6">
-            <div style="border-top: 1px solid #333; width: 80%; margin: 0 auto;">Coordinación Guardería</div>
+            <div style="border-top: 1px solid #333; width: 80%; margin: 0 auto;">Coordinación Centro de Cuidados Infantiles </div>
         </div>
     </div>
 </div>

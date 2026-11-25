@@ -3,9 +3,9 @@
 require_once '../../config/db.php';
 require_once '../../includes/header.php';
 
-// Control de acceso: exclusivo de Guardería / Administración
+// Control de acceso: exclusivo de Centro de Cuidados Infantiles  / Administración
 if (!tiene_permiso(['guarderia', 'admin', 'superadmin'], $roles_array)) {
-    echo "<div class='alert alert-danger font-weight-bold'>Acceso restringido a Centro de Cuidado Infantil.</div>";
+    echo "<div class='alert alert-danger font-weight-bold'>Acceso restringido a Centro de Cuidados Infantiles.</div>";
     require_once '../../includes/footer.php';
     exit();
 }
@@ -23,25 +23,24 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
     if (!empty($cedula_rep) && !empty($nombre_nino) && !empty($apellido_nino) && !empty($fecha_nacimiento)) {
         
-        // 1. Buscar o crear el ID de usuario del representante
-        $stmt_u = $pdo->prepare("SELECT id_usuario FROM usuarios WHERE cedula = :cedula LIMIT 1");
-        $stmt_u->execute([':cedula' => $cedula_rep]);
-        $user_rep = $stmt_u->fetch();
-
-        if ($user_rep) {
-            $id_representante = $user_rep['id_usuario'];
-        } else {
-            // Si el representante no existe en usuarios, lo registramos como trabajador/estudiante
-            $stmt_ins_u = $pdo->prepare("INSERT INTO usuarios (cedula, nombre, apellido, tipo_usuario, estatus_cuenta) VALUES (:cedula, 'Representante', 'NORA', 'estudiante', 'Activo') RETURNING id_usuario");
-            $stmt_ins_u->execute([':cedula' => $cedula_rep]);
-            $id_representante = $stmt_ins_u->fetchColumn();
-        }
-
-        // 2. Registrar al niño en guarderia_ninos
-        $sql = "INSERT INTO guarderia_ninos (id_representante, nombre_nino, apellido_nino, fecha_nacimiento, sexo, observaciones, fecha_registro) 
-                VALUES (:id_rep, :nombre, :apellido, :fecha_nac, :sexo, :obs, CURRENT_TIMESTAMP)";
-        
         try {
+            // 1. Solo se aceptan representantes activos de sistema_nora_v2.
+            $stmt_u = $pdo->prepare("SELECT id_usuario
+                                     FROM public.usuarios
+                                     WHERE regexp_replace(cedula, '[^0-9]', '', 'g') = :cedula
+                                       AND estatus_cuenta = 'Activo'
+                                     LIMIT 1");
+            $stmt_u->execute([':cedula' => preg_replace('/\D+/', '', $cedula_rep)]);
+            $user_rep = $stmt_u->fetch();
+
+            if (!$user_rep) {
+                throw new Exception('El representante debe estar registrado y activo en sistema_nora_v2 (persona que haga vida en la escuela).');
+            }
+            $id_representante = (int) $user_rep['id_usuario'];
+
+            // 2. Registrar al niño en guarderia_ninos
+            $sql = "INSERT INTO guarderia_ninos (id_representante, nombre_nino, apellido_nino, fecha_nacimiento, sexo, observaciones, fecha_registro) 
+                    VALUES (:id_rep, :nombre, :apellido, :fecha_nac, :sexo, :obs, CURRENT_TIMESTAMP)";
             $stmt = $pdo->prepare($sql);
             $stmt->execute([
                 ':id_rep'    => $id_representante,
@@ -52,7 +51,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 ':obs'       => $observaciones
             ]);
 
-            echo "<script>alert('¡Niño(a) inscrito exitosamente en el Centro de Cuidado Infantil!'); window.location.href='index.php';</script>";
+            echo "<script>alert('¡Niño(a) inscrito exitosamente en el Centro de Cuidados Infantiles!'); window.location.href='index.php';</script>";
             exit();
         } catch (Exception $e) {
             $mensaje = "Error al inscribir: " . $e->getMessage();
@@ -67,7 +66,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
 <div class="d-sm-flex align-items-center justify-content-between mb-4">
     <h1 class="h3 mb-0 font-weight-bold" style="color: #521f29;">
-        <i class="fas fa-child mr-2"></i>Inscripción - Centro de Cuidado Infantil
+        <i class="fas fa-child mr-2"></i>Inscripción - Centro de Cuidados Infantiles
     </h1>
     <a href="index.php" class="btn btn-sm btn-secondary font-weight-bold shadow-sm">
         <i class="fas fa-arrow-left mr-1"></i> Volver al Censo
@@ -96,7 +95,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     <div class="form-row mb-4">
                         <div class="form-group col-md-6">
                             <label class="font-weight-bold" style="color: #521f29;">Cédula del Representante *</label>
+                            <small class="text-muted d-block mb-1">Solo personas activas en sistema_nora_v2. No se consulta el Padrón Nacional.</small>
                             <input type="text" name="cedula_rep" id="cedula_rep" class="form-control" placeholder="Ej: 12345678" required autofocus>
+                            <small id="feedback_rep_crear" class="form-text text-muted"></small>
                         </div>
                     </div>
 
@@ -143,5 +144,46 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         </div>
     </div>
 </div>
+
+<script>
+(function () {
+    'use strict';
+    var cedula = document.getElementById('cedula_rep');
+    var fb = document.getElementById('feedback_rep_crear');
+    if (!cedula || !fb) { return; }
+    var temporizador = null;
+    var ultima = '';
+
+    function buscar() {
+        var doc = cedula.value.replace(/\D/g, '');
+        if (doc.length < 6) { fb.textContent = ''; fb.className = 'form-text text-muted'; return; }
+        if (doc === ultima) { return; }
+        ultima = doc;
+        fb.textContent = 'Consultando sistema_nora_v2...';
+        fb.className = 'form-text text-muted';
+
+        fetch('api_buscar_representante.php?cedula=' + encodeURIComponent(doc))
+            .then(function (r) { return r.json(); })
+            .then(function (data) {
+                var ok = data.encontrado && data.activo;
+                fb.textContent = ok
+                    ? data.nombre_completo + ' · ' + data.tipo_usuario + ' · ' + data.estatus_cuenta
+                    : (data.mensaje || 'No se encontró la persona en el sistema escolar.');
+                fb.className = 'form-text font-weight-bold ' + (ok ? 'text-success' : 'text-danger');
+            })
+            .catch(function () {
+                fb.textContent = 'No se pudo consultar el sistema escolar.';
+                fb.className = 'form-text text-danger font-weight-bold';
+            });
+    }
+
+    cedula.addEventListener('input', function () {
+        cedula.value = cedula.value.replace(/\D/g, '');
+        if (temporizador) { window.clearTimeout(temporizador); }
+        temporizador = window.setTimeout(buscar, 500);
+    });
+    cedula.addEventListener('blur', buscar);
+}());
+</script>
 
 <?php require_once '../../includes/footer.php'; ?>

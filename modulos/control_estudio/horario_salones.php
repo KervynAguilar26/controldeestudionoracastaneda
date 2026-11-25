@@ -1,6 +1,8 @@
 <?php
 // /sistema_nora/modulos/control_estudio/horario_salones.php
 require_once '../../config/db.php';
+require_once '../../includes/horario_generator.php';
+require_once '../../includes/espacios_disponibilidad.php';
 
 // Verificación de sesión segura
 if (session_status() === PHP_SESSION_NONE) {
@@ -80,11 +82,11 @@ foreach ($horarios_bd as $h) {
     ];
 }
 
-// 4. Definir días de clase
-$dias = ['Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes'];
-if (strpos($cohorte['dias_clase'] ?? '', 'Sábado') !== false) {
-    $dias[] = 'Sábado';
-}
+// 4. Definir días de clase según la sección (incluye Sábado y Domingo cuando aplica)
+$dias = horario_dias_desde_texto((string) ($cohorte['dias_clase'] ?? 'Lunes a Viernes'));
+
+// Estado dinámico del salón en este momento, derivado de los horarios cargados.
+$estado_salon_actual = espacios_estado_actual($pdo, (string) ($cohorte['salon_aula'] ?? ''));
 
 // Función de colores
 function horario_color_materia(string $materia): string {
@@ -130,6 +132,12 @@ function horario_color_materia(string $materia): string {
         <div class="dato"><span>Semestre / Nivel</span><strong><?= htmlspecialchars($cohorte['tipo_regimen']) ?> <?= $cohorte['num_periodo'] ?></strong></div>
         <div class="dato"><span>Días de Clase</span><strong><?= htmlspecialchars($cohorte['dias_clase']) ?></strong></div>
         <div class="dato"><span>Aforo / Salón</span><strong><?= htmlspecialchars($cohorte['salon_aula']) ?></strong></div>
+    </div>
+
+    <div class="estado-salon" style="margin-bottom: 12px; padding: 8px 12px; border-radius: 6px; font-size: 12px; font-weight: 700; background: <?= !empty($estado_salon_actual['bloqueado']) ? '#fdecef' : '#eaf5ee' ?>; color: <?= !empty($estado_salon_actual['bloqueado']) ? '#8b1e2d' : '#1e6b3a' ?>;">
+        <i class="fas <?= !empty($estado_salon_actual['bloqueado']) ? 'fa-lock' : 'fa-lock-open' ?> mr-1"></i>
+        Estado del salón ahora: <?= htmlspecialchars($estado_salon_actual['estado']) ?>
+        <span style="font-weight: 500;">— <?= htmlspecialchars($estado_salon_actual['motivo']) ?></span>
     </div>
 
     <table class="horario">

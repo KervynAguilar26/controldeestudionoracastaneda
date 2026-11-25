@@ -178,6 +178,21 @@ require_once '../../includes/header.php';
                     <label class="font-weight-bold text-dark">Nivel / Tipo de Oferta *</label>
                     <?php $tipo_actual = $malla_data['tipo_oferta'] ?? 'Pregrado'; ?>
                     <select name="tipo_oferta" class="form-control font-weight-bold" required onchange="actualizarRegimenSegunOferta(this.value)">
+                        <optgroup label="Cursos y Programas Académicos">
+                            <!-- Los registros anteriores se mantienen solo al editar, para no romper mallas ya cargadas -->
+                            <?php if ($tipo_actual === 'Curso'): ?>
+                                <option value="Curso" selected>Curso (registro anterior)</option>
+                            <?php endif; ?>
+                            <?php if (in_array($tipo_actual, ['Conversatorio', 'Foros', 'Seminarios'], true)): ?>
+                                <option value="<?= htmlspecialchars($tipo_actual) ?>" selected><?= htmlspecialchars($tipo_actual) ?> (registro anterior)</option>
+                            <?php endif; ?>
+                            <option value="Carrera Larga" <?= $tipo_actual === 'Carrera Larga' ? 'selected' : '' ?>>Curso de Emprendimiento</option>
+                            <option value="Carrera Corta" <?= $tipo_actual === 'Carrera Corta' ? 'selected' : '' ?>>Curso Varios</option>
+                        </optgroup>
+                        <optgroup label="Educación Básica y Media">
+                            <option value="Educación Básica" <?= $tipo_actual === 'Educación Básica' ? 'selected' : '' ?>>Educación Básica (Por Años)</option>
+                            <option value="Bachillerato" <?= $tipo_actual === 'Bachillerato' ? 'selected' : '' ?>>Bachillerato / Educación Media (Por Años)</option>
+                        </optgroup>
                         <optgroup label="Educación Universitaria y Superior">
                             <option value="Pregrado" <?= $tipo_actual === 'Pregrado' ? 'selected' : '' ?>>Pregrado / Licenciatura (8-10 Semestres)</option>
                             <option value="TSU" <?= $tipo_actual === 'TSU' ? 'selected' : '' ?>>Técnico Superior Universitario (4-6 Semestres)</option>
@@ -185,17 +200,10 @@ require_once '../../includes/header.php';
                             <option value="Maestría" <?= $tipo_actual === 'Maestría' ? 'selected' : '' ?>>Maestría</option>
                             <option value="Doctorado" <?= $tipo_actual === 'Doctorado' ? 'selected' : '' ?>>Doctorado</option>
                         </optgroup>
-                        <optgroup label="Técnicos y Cursos Cortos">
-                            <option value="Carrera Corta" <?= $tipo_actual === 'Carrera Corta' ? 'selected' : '' ?>>Carrera Técnica (1050 Horas)</option>
-                            <option value="Diplomado Intensivo" <?= $tipo_actual === 'Diplomado Intensivo' ? 'selected' : '' ?>>Diplomado</option>
-                            <option value="Curso" <?= $tipo_actual === 'Curso' ? 'selected' : '' ?>>Curso Corto / Taller</option>
-                            <option value="Foro / Taller" <?= $tipo_actual === 'Foro / Taller' ? 'selected' : '' ?>>Foro / Actividad Académica</option>
-                        </optgroup>
-                        <optgroup label="Educación Básica y Media">
-                            <option value="Educación Básica" <?= $tipo_actual === 'Educación Básica' ? 'selected' : '' ?>>Educación Básica (Por Años)</option>
-                            <option value="Bachillerato" <?= $tipo_actual === 'Bachillerato' ? 'selected' : '' ?>>Bachillerato / Educación Media (Por Años)</option>
-                        </optgroup>
                     </select>
+                    <small class="form-text text-muted">
+                        Foros, Conversatorios y Seminarios se crean en su propio módulo; aquí solo se diseñan mallas de cursos y programas.
+                    </small>
                 </div>
                 <div class="col-md-3 mb-3 d-flex align-items-center pt-4">
                     <div class="custom-control custom-checkbox">
@@ -218,7 +226,7 @@ require_once '../../includes/header.php';
                     </select>
                 </div>
                 <div class="col-md-6 mb-2">
-                    <label class="font-weight-bold text-dark">Total de Periodos / Semestres / Años *</label>
+                    <label class="font-weight-bold text-dark">Total de Periodos / Semestres / Años / Nivel *</label>
                     <input type="number" name="total_periodos" id="total_periodos" class="form-control font-weight-bold text-center" value="<?= $malla_data['total_periodos'] ?? 10 ?>" min="1" max="12" required onchange="reconstruirPeriodos()" onkeyup="reconstruirPeriodos()">
                 </div>
             </div>
@@ -309,11 +317,11 @@ function agregarMateriaConDatos(matData) {
         <div class="card-body p-3">
             <div class="form-row">
                 <div class="col-md-4 mb-2">
-                    <label class="font-weight-bold small text-dark">Periodo / Semestre / Año *</label>
+                    <label class="font-weight-bold small text-dark">Periodo / Semestre / Año / Ponencia / Tema *</label>
                     <select name="materias[${idMat}][modulo]" class="form-control font-weight-bold select-periodo-dinamico" onchange="calcularTotales()" required data-val="${matData.modulo}"></select>
                 </div>
                 <div class="col-md-8 mb-2">
-                    <label class="font-weight-bold small text-dark">Nombre de la Asignatura *</label>
+                    <label class="font-weight-bold small text-dark">Nombre de la Asignatura o Tema *</label>
                     <input type="text" name="materias[${idMat}][nombre]" class="form-control font-weight-bold" value="${matData.nombre || ''}" placeholder="Ej: Matemática I / Física Aplicada" required>
                 </div>
             </div>

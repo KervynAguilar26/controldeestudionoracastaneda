@@ -2,10 +2,12 @@
 // /sistema_nora/modulos/guarderia/index.php
 require_once '../../config/db.php';
 require_once '../../includes/header.php';
+require_once '../../includes/representante_ubicacion.php';
+require_once '../../includes/buscador_lista.php';
 
-// Control de acceso: exclusivo de Guardería / Administración
+// Control de acceso: exclusivo de Centro de Cuidados Infantiles  / Administración
 if (!tiene_permiso(['guarderia', 'admin', 'superadmin'], $roles_array)) {
-    echo "<div class='alert alert-danger font-weight-bold'>Acceso restringido a Centro de Cuidado Infantil.</div>";
+    echo "<div class='alert alert-danger font-weight-bold'>Acceso restringido a Centro de Cuidados Infantiles.</div>";
     require_once '../../includes/footer.php';
     exit();
 }
@@ -23,20 +25,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['guardar_nino'])) {
         $sexo = $_POST['sexo'];
         $observaciones = trim($_POST['observaciones']);
 
-        // 1. Buscar o registrar al representante en la tabla usuarios si no existe
-        $stmt_u = $pdo->prepare("SELECT id_usuario FROM public.usuarios WHERE cedula = :c LIMIT 1");
-        $stmt_u->execute([':c' => $cedula_rep]);
+        // 1. El representante debe ser una persona activa de sistema_nora_v2.
+        //    No se crean usuarios nuevos desde Centro de Cuidados Infantiles.
+        $stmt_u = $pdo->prepare("SELECT id_usuario
+                                 FROM public.usuarios
+                                 WHERE regexp_replace(cedula, '[^0-9]', '', 'g') = :c
+                                   AND estatus_cuenta = 'Activo'
+                                 LIMIT 1");
+        $stmt_u->execute([':c' => preg_replace('/\D+/', '', $cedula_rep)]);
         $id_representante = $stmt_u->fetchColumn();
 
         if (!$id_representante) {
-            $nombre_rep = trim($_POST['nombre_representante'] ?? 'Representante');
-            $tel_rep = trim($_POST['telefono_representante'] ?? '');
-            
-            $sql_u = "INSERT INTO public.usuarios (cedula, nombre, apellido, telefono, tipo_usuario, estatus_cuenta) 
-                      VALUES (:c, :n, '', :t, 'estudiante', 'Activo') RETURNING id_usuario";
-            $stmt_nu = $pdo->prepare($sql_u);
-            $stmt_nu->execute([':c' => $cedula_rep, ':n' => $nombre_rep, ':t' => $tel_rep]);
-            $id_representante = $stmt_nu->fetchColumn();
+            throw new Exception('El representante debe estar registrado y activo en sistema_nora_v2 (persona que haga vida en la escuela).');
         }
 
         // 2. Registrar al niño/a
@@ -52,7 +52,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['guardar_nino'])) {
             ':obs'   => $observaciones
         ]);
 
-        $mensaje = "¡Niño/a <strong>{$nombre_nino} {$apellido_nino}</strong> registrado/a con éxito en la guardería!";
+        $mensaje = "¡Niño/a <strong>{$nombre_nino} {$apellido_nino}</strong> registrado/a con éxito en el Centro de Cuidados Infantiles!";
         $tipo_alerta = "success";
     } catch (Exception $e) {
         $mensaje = "Error al registrar: " . $e->getMessage();
@@ -73,7 +73,7 @@ $ninos = $pdo->query($sql_lista)->fetchAll();
 
 <div class="d-sm-flex align-items-center justify-content-between mb-4">
     <h1 class="h3 mb-0 font-weight-bold" style="color: #521f29;">
-        <i class="fas fa-baby mr-2 text-warning"></i>Centro de Cuidado Infantil / Guardería
+        <i class="fas fa-baby mr-2 text-warning"></i> Centro de Cuidados Infantiles 
     </h1>
     <div>
         <a href="asistencia.php" class="btn btn-sm font-weight-bold shadow-sm text-white mr-1" style="background-color: #521f29;">
@@ -98,7 +98,8 @@ $ninos = $pdo->query($sql_lista)->fetchAll();
         <h6 class="m-0 font-weight-bold text-white"><i class="fas fa-child mr-2"></i>Matrícula Infantil Registrada</h6>
     </div>
     <div class="card-body bg-white p-4">
-        <div class="table-responsive">
+        <?php buscador_lista_render('Buscar niño/a o representante por nombre o cédula…', '#tablaMatriculaInfantil table'); ?>
+        <div class="table-responsive" id="tablaMatriculaInfantil">
             <table class="table table-hover align-middle" width="100%">
                 <thead style="background-color: #ff8a00; color: #521f29;">
                     <tr>
@@ -114,13 +115,14 @@ $ninos = $pdo->query($sql_lista)->fetchAll();
                 </thead>
                 <tbody>
                     <?php if (empty($ninos)): ?>
-                        <tr><td colspan="8" class="text-center text-muted py-4">No hay niños inscritos en el Centro de Cuidado Infantil.</td></tr>
+                        <tr><td colspan="8" class="text-center text-muted py-4">No hay niños inscritos en el Centro de Cuidados Infantiles.</td></tr>
                     <?php else: ?>
                         <?php $idx = 1; foreach ($ninos as $n): 
                             $fnac = new DateTime($n['fecha_nacimiento']);
                             $hoy = new DateTime();
                             $edad = $hoy->diff($fnac)->y;
                             $meses = $hoy->diff($fnac)->m;
+                            $ubicacion_rep = representante_ubicacion($pdo, (int) $n['id_representante']);
                         ?>
                             <tr>
                                 <td class="font-weight-bold"><?= $idx++ ?></td>
@@ -134,7 +136,8 @@ $ninos = $pdo->query($sql_lista)->fetchAll();
                                 <td><span class="badge badge-<?= $n['sexo'] === 'Femenino' ? 'danger' : 'primary' ?>"><?= $n['sexo'] ?></span></td>
                                 <td>
                                     <strong style="color: #521f29;"><?= htmlspecialchars($n['nombre_representante']) ?></strong><br>
-                                    <small class="text-muted">C.I: V-<?= htmlspecialchars($n['cedula_representante']) ?></small>
+                                    <small class="text-muted">C.I: V-<?= htmlspecialchars($n['cedula_representante']) ?></small><br>
+                                    <small class="text-muted"><i class="fas fa-map-marker-alt mr-1 text-warning"></i><?= htmlspecialchars($ubicacion_rep['texto']) ?></small>
                                 </td>
                                 <td><i class="fas fa-phone mr-1 text-muted"></i><?= htmlspecialchars($n['telefono_representante'] ?? 'S/D') ?></td>
                                 <td><small><?= htmlspecialchars($n['observaciones'] ?? 'Sin observaciones') ?></small></td>
@@ -167,6 +170,7 @@ $ninos = $pdo->query($sql_lista)->fetchAll();
                     <!-- DATOS DEL REPRESENTANTE -->
                     <div class="p-3 mb-3 bg-white rounded border">
                         <small class="font-weight-bold text-uppercase d-block mb-2" style="color: #521f29;"><i class="fas fa-id-card mr-1 text-warning"></i> Datos del Representante (Madre / Estudiante / Trabajador):</small>
+                        <small class="text-muted d-block mb-2">Solo se permite registrar personas activas en sistema_nora_v2. La búsqueda no usa el Padrón Nacional.</small>
                         <div class="form-row">
                             <div class="col-md-4 mb-2">
                                 <label class="font-weight-bold small" style="color: #521f29;">Cédula del Representante *</label>
@@ -176,6 +180,7 @@ $ninos = $pdo->query($sql_lista)->fetchAll();
                                         <button type="button" onclick="buscarRep()" class="btn btn-warning font-weight-bold"><i class="fas fa-search" id="icon_rep"></i></button>
                                     </div>
                                 </div>
+                                <small id="feedback_rep" class="form-text text-muted"></small>
                             </div>
                             <div class="col-md-5 mb-2">
                                 <label class="font-weight-bold small" style="color: #521f29;">Nombre del Representante *</label>
@@ -234,21 +239,34 @@ $ninos = $pdo->query($sql_lista)->fetchAll();
 
 <script>
 function buscarRep() {
-    const ced = document.getElementById('ced_rep_input').value.trim();
-    if (!ced) return;
+    const ced = document.getElementById('ced_rep_input').value.replace(/\D/g, '');
+    const fb = document.getElementById('feedback_rep');
+    if (!ced) { fb.textContent = 'Ingrese una cédula para buscar.'; return; }
     document.getElementById('icon_rep').className = "fas fa-spinner fa-spin";
+    fb.textContent = 'Consultando sistema_nora_v2...';
 
-    fetch('../control_estudio/api_buscar_padron.php?cedula=' + ced)
+    fetch('api_buscar_representante.php?cedula=' + encodeURIComponent(ced))
         .then(res => res.json())
         .then(data => {
             document.getElementById('icon_rep').className = "fas fa-search";
-            if (data.encontrado) {
-                document.getElementById('nom_rep_input').value = (data.first_name + ' ' + (data.second_name || '') + ' ' + data.first_surname).trim();
+            if (data.encontrado && data.activo) {
+                document.getElementById('nom_rep_input').value = data.nombre_completo;
+                document.getElementById('tel_rep_input').value = data.telefono || '';
+                fb.textContent = data.mensaje + ' (' + data.tipo_usuario + ')';
+                fb.className = 'form-text text-success font-weight-bold';
             } else {
-                alert('Cédula no encontrada en el padrón. Complete los nombres manualmente.');
+                document.getElementById('nom_rep_input').value = '';
+                document.getElementById('tel_rep_input').value = '';
+                fb.textContent = data.mensaje || 'No se encontró la persona en el sistema escolar.';
+                fb.className = 'form-text text-danger font-weight-bold';
+                alert(fb.textContent);
             }
         })
-        .catch(e => { document.getElementById('icon_rep').className = "fas fa-search"; });
+        .catch(e => {
+            document.getElementById('icon_rep').className = "fas fa-search";
+            fb.textContent = 'No se pudo consultar el sistema escolar.';
+            fb.className = 'form-text text-danger font-weight-bold';
+        });
 }
 </script>
 

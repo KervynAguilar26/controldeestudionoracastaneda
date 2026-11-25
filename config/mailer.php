@@ -87,7 +87,7 @@ function crear_mailer_smtp()
 /**
  * Envía un correo HTML genérico. Devuelve true si se envió.
  */
-function enviarCorreoSistema(string $destino, string $asunto, string $cuerpoHtml, string $nombreDestino = ''): bool
+function enviarCorreoSistema(string $destino, string $asunto, string $cuerpoHtml, string $nombreDestino = '', array $adjuntos = []): bool
 {
     if ($destino === '' || !filter_var($destino, FILTER_VALIDATE_EMAIL)) {
         error_log('Mailer: destinatario inválido (' . $destino . ').');
@@ -105,6 +105,23 @@ function enviarCorreoSistema(string $destino, string $asunto, string $cuerpoHtml
         $mail->Subject = $asunto;
         $mail->Body    = $cuerpoHtml;
         $mail->AltBody = trim(strip_tags(str_replace(['<br>', '<br/>', '<br />', '</p>'], "\n", $cuerpoHtml)));
+
+        // Adjuntos: ['contenido' => string, 'nombre' => 'archivo.pdf'] o
+        // ['ruta' => '/ruta/archivo.pdf', 'nombre' => 'archivo.pdf']
+        foreach ($adjuntos as $adj) {
+            if (!is_array($adj)) { continue; }
+            $nombreAdj = (string) ($adj['nombre'] ?? 'documento.pdf');
+            if (isset($adj['contenido']) && is_string($adj['contenido'])) {
+                $mail->addStringAttachment(
+                    $adj['contenido'],
+                    $nombreAdj,
+                    'base64',
+                    (string) ($adj['tipo'] ?? 'application/pdf')
+                );
+            } elseif (!empty($adj['ruta']) && is_file((string) $adj['ruta'])) {
+                $mail->addAttachment((string) $adj['ruta'], $nombreAdj);
+            }
+        }
 
         $mail->send();
         return true;

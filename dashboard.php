@@ -31,6 +31,27 @@ try {
     $casos_abiertos = 0;
 }
 
+try {
+    $visitas_hoy = $pdo->query("SELECT COUNT(*) FROM recepcion_visitas WHERE fecha_entrada = CURRENT_DATE")->fetchColumn();
+    $alertas_qr_pendientes = $pdo->query("SELECT COUNT(*) FROM recepcion_alertas_qr WHERE atendida = false AND fecha_lectura = CURRENT_DATE")->fetchColumn();
+} catch (Exception $e) {
+    $visitas_hoy = 0;
+    $alertas_qr_pendientes = 0;
+}
+
+// Cátedras pendientes de aceptar (solo para el docente autenticado).
+$pendientes_docente = 0;
+if (in_array('profesor', $roles_array, true)) {
+    try {
+        $st_p = $pdo->prepare("SELECT COUNT(*) FROM public.asignaciones_profesor
+                                WHERE id_profesor = :p AND estatus_aceptacion = 'Pendiente'");
+        $st_p->execute([':p' => $_SESSION['id_usuario']]);
+        $pendientes_docente = (int) $st_p->fetchColumn();
+    } catch (Exception $e) {
+        $pendientes_docente = 0;
+    }
+}
+
 // ¿Es un Monitor de Campo? (rol de ronda 5: solo comedor + infraestructura)
 $es_monitor = in_array('monitor', $roles_array) && !tiene_permiso(['superadmin', 'admin'], $roles_array);
 ?>
@@ -73,6 +94,68 @@ $es_monitor = in_array('monitor', $roles_array) && !tiene_permiso(['superadmin',
                     <h4 class="font-weight-bold" style="color: #521f29;">Infraestructura de la Escuela</h4>
                     <p class="text-muted mb-2">Registro de <strong>torres</strong>, <strong>espacios/dormitorios</strong> y reporte de <strong>estados</strong>.</p>
                     <span class="badge badge-dark px-3 py-2"><i class="fas fa-mobile-alt mr-1"></i> Funciona offline</span>
+                </div>
+            </div>
+        </a>
+    </div>
+</div>
+
+<?php elseif (in_array('profesor', $roles_array, true) && !tiene_permiso(['superadmin', 'admin'], $roles_array)): ?>
+<!-- ══════════ PORTAL DESTACADO DEL DOCENTE ══════════ -->
+<div class="d-sm-flex align-items-center justify-content-between mb-4">
+    <h1 class="h3 mb-0 font-weight-bold" style="color: #521f29;">
+        <i class="fas fa-chalkboard-teacher mr-2 text-warning"></i>
+        Hola, <?= htmlspecialchars($_SESSION['nombre'] ?? 'Docente') ?>
+    </h1>
+    <span class="badge px-3 py-2 text-white font-weight-bold" style="background-color: #521f29;">
+        <?= date('d/m/Y') ?>
+    </span>
+</div>
+
+<div class="alert alert-light border shadow-sm font-weight-bold mb-4" style="color: #521f29; border-left: 5px solid #ff8a00 !important;">
+    <i class="fas fa-info-circle mr-1 text-warning"></i>
+    Su horario ya no aparece de entrada: presione el botón <strong>Ver mi horario</strong> cuando desee consultarlo.
+</div>
+
+<div class="row">
+    <div class="col-md-4 mb-4">
+        <a href="modulos/profesor/index.php#mi-horario" class="text-decoration-none">
+            <div class="card shadow border-0 h-100" style="border-radius: 15px;">
+                <div class="card-body text-center py-5 bg-white" style="border-bottom-left-radius: 15px; border-bottom-right-radius: 15px;">
+                    <i class="fas fa-calendar-week fa-4x mb-3" style="color: #ff8a00;"></i>
+                    <h4 class="font-weight-bold" style="color: #521f29;">Mi Horario</h4>
+                    <p class="text-muted mb-3">Despliegue u oculte su horario semanal con un solo botón.</p>
+                    <span class="btn btn-warning text-dark font-weight-bold">
+                        <i class="fas fa-eye mr-1"></i> Ver mi horario
+                    </span>
+                </div>
+            </div>
+        </a>
+    </div>
+    <div class="col-md-4 mb-4">
+        <a href="modulos/profesor/index.php" class="text-decoration-none">
+            <div class="card shadow border-0 h-100" style="border-radius: 15px;">
+                <div class="card-body text-center py-5 bg-white" style="border-bottom-left-radius: 15px; border-bottom-right-radius: 15px;">
+                    <i class="fas fa-chalkboard-teacher fa-4x mb-3" style="color: #ff8a00;"></i>
+                    <h4 class="font-weight-bold" style="color: #521f29;">Portal Docente</h4>
+                    <p class="text-muted mb-3">Asignaciones, secciones, asistencia, notas y evaluación.</p>
+                    <span class="badge px-3 py-2 font-weight-bold" style="background-color: #521f29; color: #fff;">
+                        Cátedras pendientes: <?= (int) $pendientes_docente ?>
+                    </span>
+                </div>
+            </div>
+        </a>
+    </div>
+    <div class="col-md-4 mb-4">
+        <a href="modulos/foros/mis_foros.php" class="text-decoration-none">
+            <div class="card shadow border-0 h-100" style="border-radius: 15px;">
+                <div class="card-body text-center py-5 bg-white" style="border-bottom-left-radius: 15px; border-bottom-right-radius: 15px;">
+                    <i class="fas fa-comments fa-4x mb-3" style="color: #ff8a00;"></i>
+                    <h4 class="font-weight-bold" style="color: #521f29;">Mis Foros</h4>
+                    <p class="text-muted mb-3">Foros, conversatorios y seminarios en los que participa como docente.</p>
+                    <span class="btn btn-outline-primary font-weight-bold">
+                        <i class="fas fa-arrow-right mr-1"></i> Abrir
+                    </span>
                 </div>
             </div>
         </a>
@@ -169,12 +252,33 @@ $es_monitor = in_array('monitor', $roles_array) && !tiene_permiso(['superadmin',
             </div>
             <div class="card-body">
                 <p class="mb-0">
-                    Bienvenido al panel de administración general. Desde el menú lateral desplegable podrás acceder a los módulos de <strong>Control de Estudio</strong>, <strong>Comedor</strong>, <strong>Defensoría</strong>, <strong>Guardería</strong> y la <strong>Gestión de Usuarios</strong>.
+                    Bienvenido al panel de administración general. Desde el menú lateral desplegable podrás acceder a los módulos de <strong>Control de Estudio</strong>, <strong>Comedor</strong>, <strong>Defensoría</strong>, <strong>Guardería</strong>, <strong>Recepción y Visitantes</strong> y la <strong>Gestión de Usuarios</strong>.
                 </p>
             </div>
         </div>
     </div>
 </div>
+
+<?php if (tiene_permiso(['superadmin', 'admin', 'recepcion'], $roles_array)): ?>
+<div class="row">
+    <div class="col-lg-12">
+        <div class="card shadow mb-4" style="border-left: 5px solid #ff8a00 !important;">
+            <div class="card-body d-flex flex-wrap align-items-center justify-content-between">
+                <div>
+                    <h5 class="font-weight-bold mb-1" style="color: #521f29;"><i class="fas fa-concierge-bell mr-2 text-warning"></i>Recepción y Visitantes</h5>
+                    <p class="text-muted mb-0">
+                        Visitas registradas hoy: <strong><?= (int)$visitas_hoy ?></strong> &nbsp;|&nbsp;
+                        Alertas QR pendientes: <strong class="<?= $alertas_qr_pendientes > 0 ? 'text-danger' : 'text-success' ?>"><?= (int)$alertas_qr_pendientes ?></strong>
+                    </p>
+                </div>
+                <a href="modulos/recepcion/index.php" class="btn font-weight-bold text-white mt-2 mt-md-0" style="background-color: #521f29;">
+                    <i class="fas fa-arrow-right mr-1"></i> Abrir Recepción
+                </a>
+            </div>
+        </div>
+    </div>
+</div>
+<?php endif; ?>
 
 <?php endif; // fin del portal diferenciado por rol ?>
 

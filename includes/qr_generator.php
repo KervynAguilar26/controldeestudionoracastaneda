@@ -65,13 +65,17 @@ if (!function_exists('sistema_qr_url')) {
     /**
      * URL absoluta del validador público para un folio.
      */
-    function sistema_qr_url(string $folio): string
+    function sistema_qr_url(string $folio, string $codigoValidacion = ''): string
     {
         $es_https = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off')
             || (($_SERVER['HTTP_X_FORWARDED_PROTO'] ?? '') === 'https');
         $protocolo = $es_https ? 'https://' : 'http://';
         $host = $_SERVER['HTTP_HOST'] ?? 'localhost';
-        return $protocolo . $host . '/sistema_nora/validar_certificado.php?folio=' . urlencode($folio);
+        $url = $protocolo . $host . '/sistema_nora/validar_certificado.php?folio=' . urlencode($folio);
+        if ($codigoValidacion !== '') {
+            $url .= '&codigo=' . urlencode($codigoValidacion);
+        }
+        return $url;
     }
 }
 

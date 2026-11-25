@@ -78,6 +78,15 @@ foreach ($res_asistencia as $ra) {
         <p class="text-muted small mb-0 font-weight-bold">Bienvenida(o), <?= htmlspecialchars($estudiante['nombre'] . ' ' . $estudiante['apellido'], ENT_QUOTES, 'UTF-8') ?> | C.I. V-<?= htmlspecialchars($estudiante['cedula'], ENT_QUOTES, 'UTF-8') ?></p>
     </div>
     <div>
+        <a href="expediente_academico.php" class="btn btn-sm font-weight-bold text-white shadow-sm mr-2" style="background-color: #cd1e3e;">
+            <i class="fas fa-folder-open text-warning mr-1"></i> Mi Expediente Académico
+        </a>
+        <a href="../foros/mis_foros.php" class="btn btn-sm font-weight-bold text-white shadow-sm mr-2" style="background-color: #2b5876;">
+            <i class="fas fa-comments text-warning mr-1"></i> Mis Foros
+        </a>
+        <a href="../foros/mis_certificados.php" class="btn btn-sm font-weight-bold text-white shadow-sm mr-2" style="background-color: #1e7e34;">
+            <i class="fas fa-certificate text-warning mr-1"></i> Mis Certificados
+        </a>
         <a href="../../imprimir_carnet.php?cedula=<?= htmlspecialchars($estudiante['cedula'], ENT_QUOTES, 'UTF-8') ?>" target="_blank" class="btn btn-sm font-weight-bold text-white shadow-sm" style="background-color: #521f29;">
             <i class="fas fa-id-card text-warning mr-1"></i> Mi Carnet QR
         </a>
@@ -119,6 +128,52 @@ foreach ($res_asistencia as $ra) {
                     </div>
 
                     <div class="card-body bg-white p-4">
+
+                        <!-- ═══════ PANEL DEL EVENTO CON PERNOCTA ═══════ -->
+                        <?php if (!empty($coh['requiere_pernocta'])): ?>
+                        <div class="card mb-4 border-0 p-3" style="background-color: #fff5e6; border-left: 5px solid #521f29 !important; border-radius: 10px;">
+                            <h6 class="font-weight-bold mb-3" style="color: #521f29;">
+                                <i class="fas fa-moon mr-2 text-warning"></i>Información del Evento con Pernocta
+                            </h6>
+                            <div class="row">
+                                <div class="col-md-3 mb-2">
+                                    <small class="text-muted font-weight-bold d-block">FECHA DE INICIO</small>
+                                    <span class="font-weight-bold"><?= date('d/m/Y', strtotime($coh['fecha_inicio'])) ?></span>
+                                </div>
+                                <div class="col-md-3 mb-2">
+                                    <small class="text-muted font-weight-bold d-block">FECHA FINAL</small>
+                                    <span class="font-weight-bold"><?= !empty($coh['fecha_fin_estimada']) ? date('d/m/Y', strtotime($coh['fecha_fin_estimada'])) : 'Por definir' ?></span>
+                                </div>
+                                <div class="col-md-6 mb-2">
+                                    <small class="text-muted font-weight-bold d-block"><i class="fas fa-microphone mr-1 text-warning"></i>EXPONENTE / PONENTE</small>
+                                    <span class="font-weight-bold" style="color: #521f29;"><?= htmlspecialchars($coh['profesor_guia'] ?? 'Por asignar', ENT_QUOTES, 'UTF-8') ?></span>
+                                    <?php if (!empty($coh['telefono_profesor'])): ?>
+                                        <br><small class="text-muted">Contacto: <?= htmlspecialchars($coh['telefono_profesor'], ENT_QUOTES, 'UTF-8') ?></small>
+                                    <?php endif; ?>
+                                </div>
+                            </div>
+                            <div class="mt-2">
+                                <small class="text-muted font-weight-bold d-block"><i class="fas fa-list-ul mr-1 text-warning"></i>TEMÁTICAS QUE SE IMPARTIRÁN</small>
+                                <?php if (empty($materias)): ?>
+                                    <span class="text-muted font-italic small">Las temáticas estarán disponibles próximamente.</span>
+                                <?php else: ?>
+                                    <ul class="mb-0 small mt-1">
+                                        <?php foreach ($materias as $m): ?>
+                                            <li class="font-weight-bold">
+                                                <?= htmlspecialchars($m['nombre_materia'], ENT_QUOTES, 'UTF-8') ?>
+                                                <?php if (!empty($m['contenido_detallado'])): ?>
+                                                    <div class="font-weight-normal text-muted" style="white-space: pre-line;">
+                                                        <?= htmlspecialchars($m['contenido_detallado'], ENT_QUOTES, 'UTF-8') ?>
+                                                    </div>
+                                                <?php endif; ?>
+                                            </li>
+                                        <?php endforeach; ?>
+                                    </ul>
+                                <?php endif; ?>
+                            </div>
+                        </div>
+                        <?php endif; ?>
+
                         <div class="row mb-4">
                             <!-- DETALLES Y HORARIOS -->
                             <div class="col-md-4 mb-3">

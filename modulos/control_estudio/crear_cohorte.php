@@ -1,6 +1,7 @@
 <?php
 // /sistema_nora/modulos/control_estudio/crear_cohorte.php
 require_once '../../config/db.php';
+require_once '../../includes/espacios_disponibilidad.php';
 require_once '../../includes/header.php';
 
 if (!function_exists('tiene_permiso') || !tiene_permiso(['control_estudio', 'admin', 'superadmin'], $roles_array ?? [])) {
@@ -59,9 +60,26 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['guardar_cohorte'])) {
         $hora_inicio    = $_POST['hora_inicio'] ?? '08:00:00';
         $hora_fin       = $_POST['hora_fin'] ?? '12:30:00';
         $id_prof_guia   = !empty($_POST['id_profesor_guia']) ? intval($_POST['id_profesor_guia']) : null;
+        $abrir_pernocta = isset($_POST['inscripcion_pernocta_abierta']) && $_POST['inscripcion_pernocta_abierta'] === '1';
 
         if ($id_malla <= 0 || empty($salones_sel)) {
             throw new Exception('Debe seleccionar la oferta académica y al menos un salón asignado.');
+        }
+        $h_ini_norm = espacios_normalizar_hora($hora_inicio);
+        $h_fin_norm = espacios_normalizar_hora($hora_fin);
+        if ($h_ini_norm === '' || $h_fin_norm === '' || $h_fin_norm <= $h_ini_norm) {
+            throw new Exception('El rango horario de la sección no es válido.');
+        }
+        $hora_inicio = $h_ini_norm;
+        $hora_fin = $h_fin_norm;
+
+        // Solo se puede abrir inscripción con pernocta si la malla lo permite.
+        $requiere_pernocta = false;
+        $st_mp = $pdo->prepare("SELECT requiere_pernocta FROM public.mallas_curriculares WHERE id_malla = :id");
+        $st_mp->execute([':id' => $id_malla]);
+        $requiere_pernocta = (bool) $st_mp->fetchColumn();
+        if ($abrir_pernocta && !$requiere_pernocta) {
+            throw new Exception('La oferta seleccionada no está marcada como "Con Pernocta". Márquela primero en la Malla Curricular.');
         }
 
         // Generar o procesar Código de la Sección
@@ -99,38 +117,34 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['guardar_cohorte'])) {
 
         $salon_aula = implode(', ', $salones_sel);
 
-        // Validar Choque de Salón
+        // Validar Choque de Salón usando la misma regla dinámica de espacios:
+        // solo se considera ocupado si coinciden el día y la franja horaria.
         foreach ($salones_sel as $salon_nombre) {
-            $sql_v_salon = "
-                SELECT c.codigo_cohorte 
-                FROM public.cohortes c 
-                WHERE (c.salon_aula LIKE CONCAT('%', :salon::text, '%'))
-                  AND c.estatus IN ('Planificada', 'En Curso')
-                  AND c.id_cohorte != :id_curr
-                  AND (c.dias_clase = :dias::text OR :dias::text = 'Lunes a Viernes')
-                  AND (c.hora_inicio < :h_fin::time AND c.hora_fin > :h_ini::time)
-                LIMIT 1
-            ";
-            $stmt_vs = $pdo->prepare($sql_v_salon);
-            $stmt_vs->execute([
-                ':salon'   => $salon_nombre,
-                ':id_curr' => $id_cohorte_edit,
-                ':dias'    => $dias_clase,
-                ':h_ini'   => $hora_inicio,
-                ':h_fin'   => $hora_fin
-            ]);
-            $choque_salon = $stmt_vs->fetchColumn();
-
-            if ($choque_salon) {
-                throw new Exception("¡Choque de Aula! El salón '{$salon_nombre}' está ocupado por la sección '{$choque_salon}' en el horario de {$hora_inicio} a {$hora_fin}.");
+            $estado_salon = espacios_estado(
+                $pdo,
+                trim($salon_nombre),
+                espacios_dias_desde_texto($dias_clase),
+                $hora_inicio,
+                $hora_fin,
+                $fecha_inicio,
+                $fecha_fin ?: $fecha_inicio,
+                null,
+                $id_cohorte_edit > 0 ? $id_cohorte_edit : null
+            );
+            if (!empty($estado_salon['bloqueado'])) {
+                throw new Exception(
+                    "¡Choque de Aula! El salón '{$salon_nombre}' está " .
+                    strtolower($estado_salon['estado']) . ': ' . $estado_salon['motivo'] . '.'
+                );
             }
         }
 
         if ($id_cohorte_edit > 0) {
             $sql = "UPDATE public.cohortes 
-                    SET codigo_cohorte = :cod, id_malla = :malla, num_periodo = :num, salon_aula = :sal, 
-                        dias_clase = :dias, hora_inicio = :h_ini, hora_fin = :h_fin, fecha_inicio = :f_ini, 
-                        fecha_fin_estimada = :f_fin, cupos_maximos = :cupos, id_profesor_guia = :prof
+                    SET codigo_cohorte = :cod, id_malla = :malla, num_periodo = :num, salon_aula = :sal,
+                        dias_clase = :dias, hora_inicio = :h_ini, hora_fin = :h_fin, fecha_inicio = :f_ini,
+                        fecha_fin_estimada = :f_fin, cupos_maximos = :cupos, id_profesor_guia = :prof,
+                        inscripcion_pernocta_abierta = :pernocta
                     WHERE id_cohorte = :id";
             $stmt = $pdo->prepare($sql);
             $stmt->execute([
@@ -143,14 +157,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['guardar_cohorte'])) {
                 ':h_fin' => $hora_fin,
                 ':f_ini' => $fecha_inicio,
                 ':f_fin' => $fecha_fin,
-                ':cupos' => $cupos_max,
-                ':prof'  => $id_prof_guia,
-                ':id'    => $id_cohorte_edit
+                ':cupos'    => $cupos_max,
+                ':prof'     => $id_prof_guia,
+                ':pernocta' => $abrir_pernocta ? 'true' : 'false',
+                ':id'       => $id_cohorte_edit
             ]);
             $msg = "cohorte_actualizada";
         } else {
-            $sql = "INSERT INTO public.cohortes (codigo_cohorte, id_malla, num_periodo, salon_aula, dias_clase, hora_inicio, hora_fin, fecha_inicio, fecha_fin_estimada, cupos_maximos, id_profesor_guia, estatus) 
-                    VALUES (:cod, :malla, :num, :sal, :dias, :h_ini, :h_fin, :f_ini, :f_fin, :cupos, :prof, 'Planificada')";
+            $sql = "INSERT INTO public.cohortes (codigo_cohorte, id_malla, num_periodo, salon_aula, dias_clase, hora_inicio, hora_fin, fecha_inicio, fecha_fin_estimada, cupos_maximos, id_profesor_guia, inscripcion_pernocta_abierta, estatus)
+                    VALUES (:cod, :malla, :num, :sal, :dias, :h_ini, :h_fin, :f_ini, :f_fin, :cupos, :prof, :pernocta, 'Planificada')";
             $stmt = $pdo->prepare($sql);
             $stmt->execute([
                 ':cod'   => $codigo_cohorte,
@@ -161,9 +176,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['guardar_cohorte'])) {
                 ':h_ini' => $hora_inicio,
                 ':h_fin' => $hora_fin,
                 ':f_ini' => $fecha_inicio,
-                ':f_fin' => $fecha_fin,
-                ':cupos' => $cupos_max,
-                ':prof'  => $id_prof_guia
+                ':f_fin'    => $fecha_fin,
+                ':cupos'    => $cupos_max,
+                ':prof'     => $id_prof_guia,
+                ':pernocta' => $abrir_pernocta ? 'true' : 'false'
             ]);
             $msg = "cohorte_guardada";
         }
@@ -190,35 +206,45 @@ if ($id_cohorte_edit > 0 && null === $cohorte_datos) {
 
 // Carga de catálogos
 try {
-    $mallas = $pdo->query("SELECT id_malla, nombre_programa, tipo_oferta, tipo_regimen, total_periodos FROM public.mallas_curriculares ORDER BY nombre_programa ASC")->fetchAll(PDO::FETCH_ASSOC);
+    $mallas = $pdo->query("SELECT id_malla, nombre_programa, tipo_oferta, tipo_regimen, total_periodos, requiere_pernocta FROM public.mallas_curriculares ORDER BY nombre_programa ASC")->fetchAll(PDO::FETCH_ASSOC);
     $materias_mallas = $pdo->query("SELECT id_materia, id_malla, modulo_num, nombre_materia, horas_academicas FROM public.malla_materias ORDER BY modulo_num ASC, nombre_materia ASC")->fetchAll(PDO::FETCH_ASSOC);
     $profesores = $pdo->query("SELECT id_usuario, nombre, apellido, cedula FROM public.usuarios WHERE 'profesor' = ANY(roles_asignados) OR tipo_usuario = 'profesor' ORDER BY apellido ASC")->fetchAll(PDO::FETCH_ASSOC);
 
-    // Consulta de salones con ocupación dinámica
-    $sql_salones = "
-        SELECT e.id_espacio, e.nombre_espacio, e.capacidad_estudiantes, e.estatus AS estatus_mantenimiento,
-            (
-                SELECT c.codigo_cohorte FROM public.cohortes c 
-                WHERE (c.salon_aula LIKE CONCAT('%', e.nombre_espacio, '%'))
-                  AND c.estatus IN ('Planificada', 'En Curso')
-                  AND c.id_cohorte != :id_curr
-                  AND (c.dias_clase = :dias::text OR :dias::text = 'Lunes a Viernes')
-                  AND (c.hora_inicio < :h_fin::time AND c.hora_fin > :h_ini::time)
-                LIMIT 1
-            ) AS ocupado_por_cohorte
+    // Salones con ocupación dinámica: se bloquea solo quien tenga una franja
+    // que realmente solape con los días/horarios elegidos para la nueva sección.
+    $fecha_ini_salones = !empty($_POST['fecha_inicio'])
+        ? $_POST['fecha_inicio']
+        : ($cohorte_datos['fecha_inicio'] ?? date('Y-m-d'));
+    $fecha_fin_salones = !empty($_POST['fecha_fin_estimada'])
+        ? $_POST['fecha_fin_estimada']
+        : ($cohorte_datos['fecha_fin_estimada'] ?? date('Y-m-d', strtotime('+6 months')));
+
+    $salones_disponibles = $pdo->query("
+        SELECT e.id_espacio, e.nombre_espacio, e.capacidad_estudiantes, e.estatus AS estatus_mantenimiento
         FROM public.campus_espacios e
         WHERE e.tipo_espacio IN ('Aula', 'Laboratorio', 'Auditorio', 'Salón')
         ORDER BY e.nombre_espacio ASC
-    ";
+    ")->fetchAll(PDO::FETCH_ASSOC);
 
-    $stmt_s = $pdo->prepare($sql_salones);
-    $stmt_s->execute([
-        ':id_curr' => $id_cohorte_edit,
-        ':dias'    => $dias_clase,
-        ':h_ini'   => $hora_inicio,
-        ':h_fin'   => $hora_fin
-    ]);
-    $salones_disponibles = $stmt_s->fetchAll(PDO::FETCH_ASSOC);
+    $dias_sel = espacios_dias_desde_texto($dias_clase);
+    foreach ($salones_disponibles as &$sal) {
+        $estado_sal = espacios_estado(
+            $pdo,
+            (string) $sal['nombre_espacio'],
+            $dias_sel,
+            $hora_inicio,
+            $hora_fin,
+            $fecha_ini_salones,
+            $fecha_fin_salones,
+            null,
+            $id_cohorte_edit > 0 ? $id_cohorte_edit : null
+        );
+        $sal['ocupado_por_cohorte'] = !empty($estado_sal['bloqueado'])
+            ? $estado_sal['motivo']
+            : '';
+        $sal['estado_dinamico'] = $estado_sal['estado'];
+    }
+    unset($sal);
 } catch (Exception $e) {
     $salones_disponibles = [];
     $mallas = [];
@@ -263,11 +289,11 @@ $salones_seleccionados = !empty($cohorte_datos['salon_aula']) ? array_map('trim'
 
                     <div class="col-md-5 form-group">
                         <label class="font-weight-bold text-dark">Programa / Carrera *</label>
-                        <select name="id_malla" id="select_malla" class="form-control font-weight-bold" onchange="cargarNivelesYMaterias()" required>
+                        <select name="id_malla" id="select_malla" class="form-control font-weight-bold" onchange="cargarNivelesYMaterias(); actualizarPernocta();" required>
                             <option value="">-- Seleccionar Oferta --</option>
                             <?php foreach ($mallas as $m): ?>
-                                <option value="<?= $m['id_malla'] ?>" data-regimen="<?= htmlspecialchars($m['tipo_regimen'] ?? 'Semestre') ?>" data-periodos="<?= intval($m['total_periodos'] ?? 1) ?>" <?= ($cohorte_datos['id_malla'] ?? 0) == $m['id_malla'] ? 'selected' : '' ?>>
-                                    <?= htmlspecialchars($m['nombre_programa']) ?> (<?= htmlspecialchars($m['tipo_oferta']) ?>)
+                                <option value="<?= $m['id_malla'] ?>" data-regimen="<?= htmlspecialchars($m['tipo_regimen'] ?? 'Semestre') ?>" data-periodos="<?= intval($m['total_periodos'] ?? 1) ?>" data-pernocta="<?= !empty($m['requiere_pernocta']) ? '1' : '0' ?>" <?= ($cohorte_datos['id_malla'] ?? 0) == $m['id_malla'] ? 'selected' : '' ?>>
+                                    <?= htmlspecialchars($m['nombre_programa']) ?> (<?= htmlspecialchars($m['tipo_oferta']) ?><?= !empty($m['requiere_pernocta']) ? ' · PERNOCTA' : '' ?>)
                                 </option>
                             <?php endforeach; ?>
                         </select>
@@ -294,7 +320,7 @@ $salones_seleccionados = !empty($cohorte_datos['salon_aula']) ? array_map('trim'
                 <div class="row">
                     <div class="col-md-3 form-group">
                         <label class="font-weight-bold text-dark">Días de Clase *</label>
-                        <select name="dias_clase" class="form-control font-weight-bold">
+                        <select name="dias_clase" id="dias_clase" class="form-control font-weight-bold" onchange="programarActualizacionSalones()">
                             <option value="Lunes a Viernes" <?= $dias_clase === 'Lunes a Viernes' ? 'selected' : '' ?>>Lunes a Viernes</option>
                             <option value="Sábado y Domingo" <?= $dias_clase === 'Sábado y Domingo' ? 'selected' : '' ?>>Sábado y Domingo</option>
                         </select>
@@ -302,12 +328,12 @@ $salones_seleccionados = !empty($cohorte_datos['salon_aula']) ? array_map('trim'
 
                     <div class="col-md-3 form-group">
                         <label class="font-weight-bold text-dark">Hora Inicio *</label>
-                        <input type="time" name="hora_inicio" class="form-control font-weight-bold" value="<?= htmlspecialchars($hora_inicio) ?>" required>
+                        <input type="time" name="hora_inicio" id="hora_inicio" class="form-control font-weight-bold" value="<?= htmlspecialchars($hora_inicio) ?>" onchange="programarActualizacionSalones()" oninput="programarActualizacionSalones()" required>
                     </div>
 
                     <div class="col-md-3 form-group">
                         <label class="font-weight-bold text-dark">Hora Fin *</label>
-                        <input type="time" name="hora_fin" class="form-control font-weight-bold" value="<?= htmlspecialchars($hora_fin) ?>" required>
+                        <input type="time" name="hora_fin" id="hora_fin" class="form-control font-weight-bold" value="<?= htmlspecialchars($hora_fin) ?>" onchange="programarActualizacionSalones()" oninput="programarActualizacionSalones()" required>
                     </div>
 
                     <div class="col-md-3 form-group">
@@ -319,12 +345,12 @@ $salones_seleccionados = !empty($cohorte_datos['salon_aula']) ? array_map('trim'
                 <div class="row">
                     <div class="col-md-4 form-group">
                         <label class="font-weight-bold text-dark">Fecha Inicio Clases</label>
-                        <input type="date" name="fecha_inicio" class="form-control font-weight-bold" value="<?= htmlspecialchars($cohorte_datos['fecha_inicio'] ?? date('Y-m-d')) ?>" required>
+                        <input type="date" name="fecha_inicio" id="fecha_inicio" class="form-control font-weight-bold" value="<?= htmlspecialchars($cohorte_datos['fecha_inicio'] ?? date('Y-m-d')) ?>" onchange="programarActualizacionSalones()" required>
                     </div>
 
                     <div class="col-md-4 form-group">
                         <label class="font-weight-bold text-dark">Fecha Estimada Culminación</label>
-                        <input type="date" name="fecha_fin_estimada" class="form-control font-weight-bold" value="<?= htmlspecialchars($cohorte_datos['fecha_fin_estimada'] ?? date('Y-m-d', strtotime('+6 months'))) ?>">
+                        <input type="date" name="fecha_fin_estimada" id="fecha_fin_estimada" class="form-control font-weight-bold" value="<?= htmlspecialchars($cohorte_datos['fecha_fin_estimada'] ?? date('Y-m-d', strtotime('+6 months'))) ?>" onchange="programarActualizacionSalones()">
                     </div>
 
                     <div class="col-md-4 form-group">
@@ -340,11 +366,34 @@ $salones_seleccionados = !empty($cohorte_datos['salon_aula']) ? array_map('trim'
                     </div>
                 </div>
 
+                <!-- ═══════ EVENTO CON PERNOCTA ═══════ -->
+                <div class="card mb-4 border-0 p-3" id="card_pernocta" style="background-color: #fff5e6; border-left: 5px solid #521f29 !important; border-radius: 10px;">
+                    <label class="font-weight-bold text-dark h6 mb-2">
+                        <i class="fas fa-moon text-warning mr-2"></i>Evento con Pernocta
+                    </label>
+                    <div class="custom-control custom-checkbox">
+                        <input type="checkbox" class="custom-control-input" id="chk_pernocta"
+                               name="inscripcion_pernocta_abierta" value="1"
+                               <?= !empty($cohorte_datos['inscripcion_pernocta_abierta']) ? 'checked' : '' ?>>
+                        <label class="custom-control-label font-weight-bold text-dark" for="chk_pernocta">
+                            Abrir inscripción de estudiantes (solo con cédula) para este evento con pernocta
+                        </label>
+                    </div>
+                    <small class="form-text text-muted mt-2" id="ayuda_pernocta">
+                        Solo disponible cuando la oferta esté marcada como "Con Pernocta" en la Malla Curricular.
+                        La fecha de inicio se prellena; la fecha final se carga al finalizar el evento desde Dormitorios.
+                    </small>
+                </div>
+
                 <hr class="my-4">
 
                 <div class="form-group mb-4">
                     <label class="font-weight-bold text-dark h5"><i class="fas fa-building text-warning mr-2"></i>Asignación de Salón de Clase</label>
-                    <div class="row pt-2">
+                    <small class="text-muted d-block mb-2" id="estado_salones_mensaje">
+                        <i class="fas fa-info-circle mr-1"></i>
+                        El estado se recalcula automáticamente al cambiar días, horas o fechas. Solo se bloquea el aula si otra sección o préstamo tiene clase en esa misma franja.
+                    </small>
+                    <div class="row pt-2" id="contenedor_salones">
                         <?php if (empty($salones_disponibles)): ?>
                             <div class="col-12 text-muted font-italic">No hay aulas o salones registrados en el módulo de Campus Espacios.</div>
                         <?php else: ?>
@@ -363,9 +412,9 @@ $salones_seleccionados = !empty($cohorte_datos['salon_aula']) ? array_map('trim'
                                             </label>
                                         </div>
                                         <?php if (!empty($ocupado)): ?>
-                                            <small class="text-danger font-weight-bold mt-2 d-block"><i class="fas fa-ban mr-1"></i> Ocupado por: <?= htmlspecialchars($ocupado) ?></small>
+                                            <small class="text-danger font-weight-bold mt-2 d-block"><i class="fas fa-lock mr-1"></i> <?= htmlspecialchars($sal['estado_dinamico'] ?? 'BLOQUEADO') ?>: <?= htmlspecialchars($ocupado) ?></small>
                                         <?php else: ?>
-                                            <small class="text-success font-weight-bold mt-2 d-block"><i class="fas fa-check-circle mr-1"></i> Disponible</small>
+                                            <small class="text-success font-weight-bold mt-2 d-block"><i class="fas fa-lock-open mr-1"></i> DESBLOQUEADO · sin solape en esta franja</small>
                                         <?php endif; ?>
                                     </div>
                                 </div>
@@ -386,6 +435,10 @@ $salones_seleccionados = !empty($cohorte_datos['salon_aula']) ? array_map('trim'
 const todasLasMaterias = <?= json_encode($materias_mallas) ?>;
 const periodoActualEdit = <?= intval($cohorte_datos['num_periodo'] ?? 1) ?>;
 const esEdicion = <?= $id_cohorte_edit > 0 ? 'true' : 'false' ?>;
+const idCohorteEdit = <?= intval($id_cohorte_edit) ?>;
+let salonesSeleccionados = new Set();
+let temporizadorSalones = null;
+let versionSalones = 0;
 
 function generarCodigoSugerido() {
     if (esEdicion) return;
@@ -419,10 +472,30 @@ function generarCodigoSugerido() {
     inputCodigo.value = `SEC-${iniciales}${numPeriodo}A`;
 }
 
+function actualizarPernocta() {
+    const selectMalla = document.getElementById('select_malla');
+    const chk = document.getElementById('chk_pernocta');
+    const ayuda = document.getElementById('ayuda_pernocta');
+    if (!selectMalla || !chk) return;
+    const opt = selectMalla.options[selectMalla.selectedIndex];
+    const requiere = opt && opt.getAttribute('data-pernocta') === '1';
+    chk.disabled = !requiere;
+    if (!requiere) {
+        chk.checked = false;
+        if (ayuda) ayuda.innerHTML = 'Esta oferta <strong>no</strong> requiere pernocta. Márquela como "Con Pernocta" en la Malla Curricular para habilitar el pre-registro por cédula.';
+    } else {
+        // Registrar la cohorte con pernocta habilita de una vez la inscripción por cédula.
+        if (!esEdicion) { chk.checked = true; }
+        if (ayuda) ayuda.innerHTML = 'Inscripción habilitada automáticamente. Fecha de inicio prellenada; la fecha final se carga al finalizar el evento desde <a href="../configuracion/dormitorios.php" class="font-weight-bold">Dormitorios</a>.';
+    }
+}
+
 function cargarNivelesYMaterias() {
     const selectMalla = document.getElementById('select_malla');
     const selectPeriodo = document.getElementById('select_periodo');
     if (!selectMalla || !selectPeriodo) return;
+
+    actualizarPernocta();
 
     const optSelected = selectMalla.options[selectMalla.selectedIndex];
 
@@ -489,8 +562,160 @@ function filtrarChecklistMaterias() {
     contenedor.innerHTML = htmlChecklist;
 }
 
+function escapeHtml(valor) {
+    return String(valor == null ? '' : valor).replace(/[&<>"']/g, function(c) {
+        return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#039;' }[c];
+    });
+}
+
+function actualizarSeleccionSalones() {
+    document.querySelectorAll('#contenedor_salones input[name="salones[]"]').forEach(function(chk) {
+        if (chk.checked) salonesSeleccionados.add(chk.value);
+        else salonesSeleccionados.delete(chk.value);
+    });
+}
+
+function programarActualizacionSalones() {
+    if (temporizadorSalones) clearTimeout(temporizadorSalones);
+    temporizadorSalones = setTimeout(function() {
+        temporizadorSalones = null;
+        actualizarSalonesPorHorario();
+    }, 250);
+}
+
+function diasDelSelect() {
+    const select = document.getElementById('dias_clase');
+    const texto = (select ? select.value : 'Lunes a Viernes').toLowerCase();
+    if (texto.indexOf('lunes a viernes') !== -1) {
+        return ['Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes'];
+    }
+    if (texto.indexOf('sábado y domingo') !== -1 || texto.indexOf('sabado y domingo') !== -1) {
+        return ['Sábado', 'Domingo'];
+    }
+    if (texto.indexOf('sábado') !== -1 || texto.indexOf('sabado') !== -1) {
+        return ['Sábado'];
+    }
+    if (texto.indexOf('domingo') !== -1) {
+        return ['Domingo'];
+    }
+    return ['Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes'];
+}
+
+async function actualizarSalonesPorHorario() {
+    actualizarSeleccionSalones();
+
+    // Si el usuario vuelve a cambiar los datos, se ignora la respuesta anterior.
+    const version = ++versionSalones;
+
+    const contenedor = document.getElementById('contenedor_salones');
+    const mensaje = document.getElementById('estado_salones_mensaje');
+    if (!contenedor) return;
+
+    const datos = new FormData();
+    diasDelSelect().forEach(function(dia) { datos.append('dias[]', dia); });
+
+    const ini = document.getElementById('hora_inicio');
+    const fin = document.getElementById('hora_fin');
+    const fIni = document.getElementById('fecha_inicio');
+    const fFin = document.getElementById('fecha_fin_estimada');
+
+    datos.append('hora_inicio', ini ? ini.value : '');
+    datos.append('hora_fin', fin ? fin.value : '');
+    datos.append('fecha_inicio', fIni ? fIni.value : '');
+    datos.append('fecha_fin', (fFin && fFin.value) ? fFin.value : (fIni ? fIni.value : ''));
+
+    ['Aula', 'Laboratorio', 'Auditorio', 'Salón'].forEach(function(tipo) {
+        datos.append('tipos[]', tipo);
+    });
+
+    if (idCohorteEdit > 0) datos.append('id_cohorte', idCohorteEdit);
+
+    const tokenMeta = document.querySelector('meta[name="csrf-token"]');
+    if (tokenMeta) datos.append('_csrf', tokenMeta.getAttribute('content'));
+
+    if (mensaje) {
+        mensaje.innerHTML = '<i class="fas fa-spinner fa-spin mr-1"></i> Recalculando disponibilidad según días, horas y fechas...';
+    }
+
+    try {
+        const respuesta = await fetch('api_consultar_disponibilidad.php', {
+            method: 'POST',
+            body: datos,
+            credentials: 'same-origin'
+        });
+        const resultado = await respuesta.json();
+        if (!resultado.success) throw new Error(resultado.message || 'No se pudo consultar la disponibilidad.');
+
+        if (version !== versionSalones) return;
+
+        const salones = resultado.salones || [];
+        renderizarSalones(salones);
+
+        if (mensaje) {
+            const libres = salones.filter(function(s) { return s.disponible; }).length;
+            const ocupados = salones.length - libres;
+            mensaje.innerHTML = '<i class="fas fa-sync-alt mr-1"></i> Estado actualizado: '
+                + libres + ' desbloqueado(s) · ' + ocupados + ' bloqueado(s) por solape en esta franja.';
+        }
+    } catch (error) {
+        if (version !== versionSalones) return;
+        if (mensaje) {
+            mensaje.innerHTML = '<i class="fas fa-exclamation-triangle text-danger mr-1"></i> '
+                + 'No se pudo recalcular la disponibilidad. Intente nuevamente.';
+        }
+    }
+}
+
+function renderizarSalones(salones) {
+    const contenedor = document.getElementById('contenedor_salones');
+    if (!contenedor) return;
+
+    if (!salones.length) {
+        contenedor.innerHTML = '<div class="col-12 text-muted font-italic">No hay aulas o salones registrados en el módulo de Campus Espacios.</div>';
+        return;
+    }
+
+    let html = '';
+    salones.forEach(function(sal) {
+        const bloqueado = !sal.disponible || String(sal.estado || '').toUpperCase() === 'BLOQUEADO';
+        const nombre = sal.nombre_espacio || '';
+        const idCheckbox = 'salon_' + sal.id_espacio;
+
+        // Si la nueva franja entra en conflicto, se libera automáticamente la selección anterior.
+        if (bloqueado) salonesSeleccionados.delete(nombre);
+        const seleccionado = salonesSeleccionados.has(nombre);
+        const claseBorde = bloqueado ? 'bg-light text-muted border-danger'
+            : (seleccionado ? 'border-primary bg-white' : 'border-success bg-white');
+        const motivo = bloqueado
+            ? (sal.motivo || 'Ocupado en esta franja')
+            : 'sin solape en esta franja';
+
+        html += '<div class="col-md-4 mb-3">'
+            + '<div class="card h-100 p-3 border ' + claseBorde + '" style="border-radius: 12px;">'
+            + '<div class="custom-control custom-checkbox">'
+            + '<input type="checkbox" class="custom-control-input" id="' + escapeHtml(idCheckbox) + '" '
+            + 'name="salones[]" value="' + escapeHtml(nombre) + '" '
+            + (seleccionado ? 'checked ' : '') + (bloqueado ? 'disabled ' : '') + '>'
+            + '<label class="custom-control-label font-weight-bold d-block text-dark" for="' + escapeHtml(idCheckbox) + '" '
+            + 'title="' + escapeHtml(sal.nombre || nombre) + '">'
+            + escapeHtml(nombre)
+            + '<span class="badge badge-info float-right">' + escapeHtml(sal.capacidad) + ' Alumnos Cap.</span>'
+            + '</label></div>'
+            + (bloqueado
+                ? '<small class="text-danger font-weight-bold mt-2 d-block"><i class="fas fa-lock mr-1"></i> '
+                    + escapeHtml(sal.estado || 'BLOQUEADO') + ': ' + escapeHtml(motivo) + '</small>'
+                : '<small class="text-success font-weight-bold mt-2 d-block"><i class="fas fa-lock-open mr-1"></i> '
+                    + 'DESBLOQUEADO · ' + escapeHtml(motivo) + '</small>')
+            + '</div></div>';
+    });
+
+    contenedor.innerHTML = html;
+}
+
 document.addEventListener('DOMContentLoaded', function() {
     cargarNivelesYMaterias();
+    actualizarSeleccionSalones();
+    actualizarSalonesPorHorario();
 });
 </script>
 

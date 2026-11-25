@@ -92,6 +92,13 @@ foreach ($grupos as $clave => $g) {
 $mallasLista = $pdo->query("SELECT id_malla, nombre_programa FROM public.mallas_curriculares ORDER BY nombre_programa")->fetchAll(PDO::FETCH_ASSOC);
 $cohortesLista = $pdo->query("SELECT id_cohorte, codigo_cohorte FROM public.cohortes ORDER BY codigo_cohorte")->fetchAll(PDO::FETCH_ASSOC);
 $estudiantesLista = $pdo->query("SELECT id_usuario, cedula, nombre, apellido FROM public.usuarios WHERE tipo_usuario = 'estudiante' OR 'estudiante' = ANY(roles_asignados) ORDER BY apellido ASC")->fetchAll(PDO::FETCH_ASSOC);
+
+// Conserva los filtros activos al descargar el padrón.
+$query_export = http_build_query(array_filter([
+    'q' => $f_q,
+    'id_malla' => $f_malla,
+    'id_cohorte' => $f_cohorte,
+], static function ($v) { return $v !== '' && $v !== 0; }));
 ?>
 
 <div class="d-sm-flex align-items-center justify-content-between mb-4">
@@ -102,6 +109,9 @@ $estudiantesLista = $pdo->query("SELECT id_usuario, cedula, nombre, apellido FRO
         <button type="button" class="btn btn-warning text-dark font-weight-bold shadow-sm mr-2" data-toggle="modal" data-target="#modalNuevaInscripcion">
             <i class="fas fa-user-plus mr-1"></i> Nueva Inscripción / Promoción
         </button>
+        <a href="exportar_matricula_xls.php<?= $query_export !== '' ? '?' . htmlspecialchars($query_export, ENT_QUOTES) : '' ?>" class="btn btn-success font-weight-bold shadow-sm mr-2" title="Descargar el padrón filtrado en archivo XLS">
+            <i class="fas fa-file-excel mr-1"></i> Descargar XLS
+        </a>
         <a href="index.php" class="btn btn-secondary font-weight-bold shadow-sm">
             <i class="fas fa-arrow-left mr-1"></i> Volver a Control
         </a>

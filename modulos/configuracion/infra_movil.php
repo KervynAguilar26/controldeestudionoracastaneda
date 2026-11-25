@@ -7,6 +7,7 @@
 // conexión. Idempotente por UUID: re-sincronizar nunca duplica registros.
 // ═══════════════════════════════════════════════════════════════════════════
 require_once '../../config/db.php';
+require_once '../../includes/espacios_disponibilidad.php';
 require_once '../../includes/header.php';
 
 // Control de acceso: Monitores y Administración
@@ -31,6 +32,12 @@ try {
                              LEFT JOIN public.campus_edificios t ON t.id_edificio = e.id_edificio
                              ORDER BY e.nombre_espacio ASC")->fetchAll();
 } catch (Exception $e) { $espacios = []; }
+
+// Estado dinámico según los horarios asignados en este momento.
+$estado_horarios_movil = [];
+foreach ($espacios as $em) {
+    $estado_horarios_movil[$em['id_espacio']] = espacios_estado_actual($pdo, (string) $em['nombre_espacio']);
+}
 
 // Últimos registros sincronizados (referencia visual para el monitor)
 try {
@@ -157,9 +164,12 @@ try {
                 <label class="font-weight-bold" style="color: #521f29;">Espacio / Salón *</label>
                 <select id="est_espacio" class="form-control form-control-lg" required>
                     <option value="">-- Seleccione el espacio --</option>
-                    <?php foreach ($espacios as $e): ?>
+                    <?php foreach ($espacios as $e):
+                        $estado_movil = $estado_horarios_movil[$e['id_espacio']] ?? ['estado' => 'DESBLOQUEADO'];
+                    ?>
                         <option value="<?= (int)$e['id_espacio'] ?>">
-                            <?= htmlspecialchars($e['nombre_espacio']) ?> — <?= htmlspecialchars($e['torre']) ?> (<?= htmlspecialchars($e['estatus']) ?>)
+                            <?= htmlspecialchars($e['nombre_espacio']) ?> — <?= htmlspecialchars($e['torre']) ?>
+                            (<?= htmlspecialchars($e['estatus']) ?> · <?= htmlspecialchars($estado_movil['estado']) ?>)
                         </option>
                     <?php endforeach; ?>
                 </select>

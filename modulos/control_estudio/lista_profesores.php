@@ -1,6 +1,7 @@
 <?php
 // /sistema_nora/modulos/control_estudio/lista_profesores.php
 require_once '../../config/db.php';
+require_once '../../includes/disponibilidad_docente.php';
 require_once '../../includes/header.php';
 
 $msg = '';
@@ -23,6 +24,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             if (empty($cohortes_sel)) {
                 throw new Exception('Debe seleccionar al menos una sección o cohorte.');
             }
+
+            // Verificación previa del docente (la carga se calcula al armar el horario)
+            $u_prof = docente_datos($pdo, $id_profesor);
+            if (!$u_prof) {
+                throw new Exception('El docente seleccionado no existe.');
+            }
+            // La jornada se mide con los bloques del horario de trabajo, no con el
+            // total de horas académicas de la asignatura (p. ej. 120 h del curso).
 
             $pdo->beginTransaction();
 
@@ -52,10 +61,59 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             }
 
             $pdo->commit();
-            $msg = "Cátedra asignada exitosamente a las secciones seleccionadas ({$insertadas} nuevas registradas).";
+            $msg = "Cátedra asignada exitosamente a las secciones seleccionadas ({$insertadas} nuevas registradas). La carga semanal se rige por los bloques del horario de trabajo, no por el total de horas de la asignatura.";
 
         } catch (Exception $e) {
             if ($pdo->inTransaction()) { $pdo->rollBack(); }
+            $err = $e->getMessage();
+        }
+    }
+
+    // GUARDAR JORNADA Y DISPONIBILIDAD DEL DOCENTE (botón de la tarjeta)
+    if (isset($_POST['guardar_jornada_docente'])) {
+        $id_prof = intval($_POST['id_profesor'] ?? 0);
+        try {
+            if ($id_prof <= 0) {
+                throw new Exception('Debe seleccionar un docente válido.');
+            }
+            $hmin = intval($_POST['horas_semanales_min'] ?? 20);
+            $hmax = intval($_POST['horas_semanales_max'] ?? 40);
+            if ($hmin < 20 || $hmax > 40 || $hmin > $hmax) {
+                throw new Exception('La jornada docente debe estar entre 20 y 40 horas semanales (mínimo ≤ máximo).');
+            }
+
+            // No se puede fijar un máximo menor a la carga ya registrada en el horario de trabajo.
+            $carga_actual = docente_horas_cargadas($pdo, $id_prof);
+            if (($carga_actual['total'] ?? 0) > $hmax) {
+                throw new Exception(
+                    "No puede establecer un máximo de {$hmax} h: el docente ya tiene "
+                    . ($carga_actual['total'] ?? 0) . " h asignadas en su horario de trabajo. Retire bloques o aumente el máximo."
+                );
+            }
+
+            if (empty($_POST['disponibilidad_docente'])) {
+                throw new Exception('No se recibió la jornada a guardar.');
+            }
+
+            $disp_json = docente_disponibilidad_json((array) ($_POST['disponibilidad'] ?? []));
+
+            $stmt_up = $pdo->prepare("
+                UPDATE public.usuarios
+                   SET horas_semanales_min = :hmin,
+                       horas_semanales_max = :hmax,
+                       disponibilidad_horaria = :disp,
+                       espacios_permitidos = NULL
+                 WHERE id_usuario = :id
+            ");
+            $stmt_up->execute([
+                ':hmin' => $hmin,
+                ':hmax' => $hmax,
+                ':disp' => $disp_json === '' ? null : $disp_json,
+                ':id'   => $id_prof,
+            ]);
+
+            $msg = "Jornada y días/horas del docente actualizados correctamente.";
+        } catch (Exception $e) {
             $err = $e->getMessage();
         }
     }
@@ -70,13 +128,20 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
 }
 
-// Consultar profesores
+// Consultar profesores (con jornada y disponibilidad)
 $profesores = $pdo->query("
-    SELECT id_usuario, cedula, nombre, apellido, correo, telefono 
+    SELECT id_usuario, cedula, nombre, apellido, correo, telefono,
+           horas_semanales_min, horas_semanales_max, disponibilidad_horaria
     FROM public.usuarios 
     WHERE tipo_usuario IN ('profesor', 'admin', 'superadmin') OR 'profesor' = ANY(roles_asignados)
     ORDER BY apellido ASC
 ")->fetchAll(PDO::FETCH_ASSOC);
+
+// Resumen de carga académica ya asignada en horarios
+$carga_docentes = [];
+foreach ($profesores as $p_row) {
+    $carga_docentes[$p_row['id_usuario']] = docente_horas_cargadas($pdo, intval($p_row['id_usuario']));
+}
 
 // Consultar materias incluyendo id_malla para el filtrado dinámico
 $materias = $pdo->query("
@@ -94,6 +159,7 @@ $cohortes = $pdo->query("
     WHERE c.estatus IN ('Planificada', 'En Curso')
     ORDER BY c.codigo_cohorte ASC
 ")->fetchAll(PDO::FETCH_ASSOC);
+
 ?>
 
 <style>
@@ -143,6 +209,7 @@ $cohortes = $pdo->query("
                             <th>Cédula</th>
                             <th>Docente</th>
                             <th>Asignaturas Impartidas y Secciones</th>
+                            <th class="text-center">Carga Académica</th>
                             <th class="text-center">Acciones</th>
                         </tr>
                     </thead>
@@ -191,11 +258,36 @@ $cohortes = $pdo->query("
                                         </ul>
                                     <?php endif; ?>
                                 </td>
-                                <td class="text-center align-middle">
-                                    <button type="button" class="btn btn-sm text-dark font-weight-bold shadow-sm mr-1" style="background-color: #ff8a00;" data-toggle="modal" data-target="#modalAsignar_<?= $p['id_usuario'] ?>">
+                                <?php
+                                    $pid_doc = intval($p['id_usuario']);
+                                    $carga_doc = $carga_docentes[$pid_doc]['total'] ?? 0;
+                                    $maximo_doc = intval($p['horas_semanales_max']);
+                                    $minimo_doc = intval($p['horas_semanales_min']);
+                                    $excedido_doc = $carga_doc > $maximo_doc;
+                                    $porcentaje_doc = $maximo_doc > 0 ? min(100, intval(round($carga_doc / $maximo_doc * 100))) : 0;
+                                    $disp_doc = docente_disponibilidad_leer($p['disponibilidad_horaria'] ?? null);
+                                ?>
+                                <td class="text-center align-middle" style="min-width: 160px;">
+                                    <div class="font-weight-bold <?= $excedido_doc ? 'text-danger' : 'text-success' ?>">
+                                        <?= $carga_doc ?> / <?= $maximo_doc ?> h
+                                        <?php if ($excedido_doc): ?><i class="fas fa-exclamation-triangle ml-1"></i><?php endif; ?>
+                                    </div>
+                                    <div class="progress mt-1" style="height: 6px;">
+                                        <div class="progress-bar <?= $excedido_doc ? 'bg-danger' : 'bg-success' ?>" role="progressbar" style="width: <?= $porcentaje_doc ?>%;"></div>
+                                    </div>
+                                    <small class="text-muted">Rango: <?= $minimo_doc ?>-<?= $maximo_doc ?> h</small>
+                                    <small class="d-block text-muted">
+                                        <?= docente_tiene_restriccion($disp_doc) ? count($disp_doc) . ' días disponibles' : 'Sin restricción' ?>
+                                    </small>
+                                </td>
+                                <td class="text-center align-middle" style="min-width: 220px;">
+                                    <button type="button" class="btn btn-sm text-white font-weight-bold shadow-sm mr-1 mb-1" style="background-color: #521f29;" data-toggle="modal" data-target="#modalJornada_<?= $p['id_usuario'] ?>">
+                                        <i class="fas fa-clock mr-1"></i> Jornada y disponibilidad
+                                    </button>
+                                    <button type="button" class="btn btn-sm text-dark font-weight-bold shadow-sm mr-1 mb-1" style="background-color: #ff8a00;" data-toggle="modal" data-target="#modalAsignar_<?= $p['id_usuario'] ?>">
                                         <i class="fas fa-plus-circle mr-1"></i> Asignar Materia
                                     </button>
-                                    <a href="imprimir_horario_profesor.php?id_profesor=<?= $p['id_usuario'] ?>" target="_blank" class="btn btn-sm text-white font-weight-bold shadow-sm" style="background-color: #2b5876;">
+                                    <a href="imprimir_horario_profesor.php?id_profesor=<?= $p['id_usuario'] ?>" target="_blank" class="btn btn-sm text-white font-weight-bold shadow-sm mb-1" style="background-color: #2b5876;">
                                         <i class="fas fa-calendar-alt mr-1"></i> Ver Horario
                                     </a>
                                 </td>
@@ -221,6 +313,20 @@ $cohortes = $pdo->query("
                     <button type="button" class="close text-white" data-dismiss="modal">&times;</button>
                 </div>
                 <div class="modal-body bg-light p-4">
+                    <?php
+                        $u_modal = docente_datos($pdo, intval($p['id_usuario']));
+                        $disp_modal = $u_modal['disponibilidad'] ?? [];
+                        $carga_modal = $carga_docentes[intval($p['id_usuario'])]['total'] ?? 0;
+                    ?>
+                    <div class="alert alert-info py-2 small mb-3">
+                        <i class="fas fa-info-circle mr-1"></i>
+                        Jornada: <strong><?= $u_modal['horas_semanales_min'] ?? 20 ?>-<?= $u_modal['horas_semanales_max'] ?? 40 ?> h</strong> |
+                        Carga según horario de trabajo: <strong><?= $carga_modal ?> h</strong> |
+                        Días disponibles: <strong><?= docente_tiene_restriccion($disp_modal) ? htmlspecialchars(implode(', ', array_keys($disp_modal))) : 'Todos' ?></strong>
+                        <?php $disp_horas_modal = docente_horas_disponibles($disp_modal); ?>
+                        <?php if ($disp_horas_modal !== null): ?> | Disponibilidad declarada: <strong><?= $disp_horas_modal ?> h semanales</strong><?php endif; ?>
+                        <br><i class="fas fa-exclamation-circle mr-1"></i>El total de horas del programa no cuenta en la jornada; solo los bloques efectivamente asignados en el horario.
+                    </div>
                     <div class="form-group mb-3">
                         <label class="font-weight-bold text-dark">Materia / Asignatura *</label>
                         <select name="id_materia" id="select_materia_<?= $p['id_usuario'] ?>" class="form-control font-weight-bold select-materia-dinamica" data-userid="<?= $p['id_usuario'] ?>" required>
@@ -264,6 +370,105 @@ $cohortes = $pdo->query("
                 <div class="modal-footer bg-white">
                     <button type="button" class="btn btn-secondary font-weight-bold" data-dismiss="modal">Cancelar</button>
                     <button type="submit" name="asignar_materia_profesor" id="btn_guardar_<?= $p['id_usuario'] ?>" class="btn font-weight-bold text-white" style="background-color: #ff8a00;" disabled>GUARDAR ASIGNACIONES</button>
+                </div>
+            </form>
+        </div>
+    </div>
+<?php endforeach; ?>
+
+<!-- MODALES DE JORNADA Y DÍAS/HORAS POR DOCENTE -->
+<?php foreach ($profesores as $p): ?>
+    <?php
+        $id_jor    = intval($p['id_usuario']);
+        $u_jor     = docente_datos($pdo, $id_jor);
+        $disp_jor  = docente_disponibilidad_leer($p['disponibilidad_horaria'] ?? null);
+        $carga_jor = $carga_docentes[$id_jor]['total'] ?? 0;
+        $nombre_jor = htmlspecialchars($p['nombre'] . ' ' . $p['apellido'], ENT_QUOTES, 'UTF-8');
+    ?>
+    <div class="modal fade" id="modalJornada_<?= $id_jor ?>" tabindex="-1" role="dialog" aria-labelledby="tituloJornada_<?= $id_jor ?>">
+        <div class="modal-dialog modal-lg modal-dialog-centered" role="document">
+            <form method="POST" action="lista_profesores.php" class="modal-content shadow-lg" style="border-radius: 12px;">
+                <?php if (function_exists('csrf_field')) { echo csrf_field(); } ?>
+                <input type="hidden" name="guardar_jornada_docente" value="1">
+                <input type="hidden" name="id_profesor" value="<?= $id_jor ?>">
+                <input type="hidden" name="disponibilidad_docente" value="1">
+
+                <div class="modal-header text-white" style="background-color: #521f29;">
+                    <h5 class="modal-title font-weight-bold" id="tituloJornada_<?= $id_jor ?>">
+                        <i class="fas fa-clock mr-2"></i>Jornada y disponibilidad: <?= $nombre_jor ?>
+                    </h5>
+                    <button type="button" class="close text-white" data-dismiss="modal">&times;</button>
+                </div>
+
+                <div class="modal-body bg-light p-4">
+                    <div class="alert alert-info py-2 small mb-3">
+                        <i class="fas fa-info-circle mr-1"></i>
+                        Carga actual según horario de trabajo: <strong><?= $carga_jor ?> h</strong> |
+                        Rango guardado: <strong><?= intval($u_jor['horas_semanales_min'] ?? 20) ?>-<?= intval($u_jor['horas_semanales_max'] ?? 40) ?> h</strong>.
+                        El sistema impedirá asignar clases fuera de los días y horas marcados, evitará choques de aula y no superará el máximo semanal. Las horas totales de cada asignatura no se contabilizan aquí.
+                    </div>
+
+                    <div class="form-row mb-3">
+                        <div class="col-md-6 form-group mb-2">
+                            <label class="font-weight-bold small" style="color:#521f29;">Horas mínimas semanales de trabajo *</label>
+                            <input type="number" name="horas_semanales_min" min="20" max="40" step="1" class="form-control font-weight-bold" value="<?= intval($u_jor['horas_semanales_min'] ?? 20) ?>" required>
+                        </div>
+                        <div class="col-md-6 form-group mb-2">
+                            <label class="font-weight-bold small" style="color:#521f29;">Horas máximas semanales de trabajo *</label>
+                            <input type="number" name="horas_semanales_max" min="20" max="40" step="1" class="form-control font-weight-bold" value="<?= intval($u_jor['horas_semanales_max'] ?? 40) ?>" required>
+                        </div>
+                    </div>
+
+                    <div class="d-flex justify-content-between align-items-center mb-2">
+                        <h6 class="m-0 font-weight-bold" style="color:#521f29;">
+                            <i class="fas fa-calendar-week mr-2 text-warning"></i>Días y horas en que puede impartir clases
+                        </h6>
+                        <div>
+                            <button type="button" class="btn btn-sm btn-outline-primary" onclick="document.querySelectorAll('#tabla-jornada-<?= $id_jor ?> input[type=checkbox]').forEach(c => { if (!c.disabled) c.checked = true; });">Marcar todo</button>
+                            <button type="button" class="btn btn-sm btn-outline-secondary" onclick="document.querySelectorAll('#tabla-jornada-<?= $id_jor ?> input[type=checkbox]').forEach(c => c.checked = false);">Limpiar</button>
+                        </div>
+                    </div>
+                    <p class="small text-muted mb-2">
+                        Marque cada bloque en el que el docente puede estar en la escuela. Si no marca ninguno, se interpreta que está disponible en todos los bloques.
+                    </p>
+                    <div class="table-responsive mb-4">
+                        <table id="tabla-jornada-<?= $id_jor ?>" class="table table-sm table-bordered text-center mb-0">
+                            <thead style="background-color:#521f29;color:#fff;">
+                                <tr>
+                                    <th class="text-left">Bloque / Hora</th>
+                                    <?php foreach (docente_dias() as $dia): ?><th><?= htmlspecialchars($dia, ENT_QUOTES, 'UTF-8') ?></th><?php endforeach; ?>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <?php foreach (docente_bloques() as $b): ?>
+                                    <tr>
+                                        <td class="text-left font-weight-bold small <?= !$b['clase'] ? 'text-muted' : '' ?>">
+                                            <?= htmlspecialchars($b['etiqueta'], ENT_QUOTES, 'UTF-8') ?>
+                                            <?php if (!$b['clase']): ?><span class="badge badge-light">No impartible</span><?php endif; ?>
+                                        </td>
+                                        <?php foreach (docente_dias() as $dia):
+                                            $marcado = isset($disp_jor[$dia]) && in_array($b['inicio'], $disp_jor[$dia], true);
+                                        ?>
+                                            <td>
+                                                <input type="checkbox" class="form-check-input"
+                                                       name="disponibilidad[<?= htmlspecialchars($dia, ENT_QUOTES, 'UTF-8') ?>][]"
+                                                       value="<?= htmlspecialchars($b['inicio'], ENT_QUOTES, 'UTF-8') ?>"
+                                                       <?= $marcado ? 'checked' : '' ?>
+                                                       <?= !$b['clase'] ? 'disabled' : '' ?>>
+                                            </td>
+                                        <?php endforeach; ?>
+                                    </tr>
+                                <?php endforeach; ?>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <div class="modal-footer bg-white">
+                    <button type="button" class="btn btn-secondary font-weight-bold" data-dismiss="modal">Cancelar</button>
+                    <button type="submit" class="btn font-weight-bold text-white" style="background-color: #ff8a00;">
+                        <i class="fas fa-save mr-1"></i> GUARDAR JORNADA
+                    </button>
                 </div>
             </form>
         </div>

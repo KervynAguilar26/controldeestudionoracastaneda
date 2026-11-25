@@ -42,7 +42,7 @@ $buscar       = trim($_GET['buscar'] ?? '');
 $filtro_tipo  = trim($_GET['tipo'] ?? '');
 $filtro_est   = trim($_GET['estatus'] ?? '');
 
-$tipos_validos  = ['superadmin','admin','defensoria','comedor','cocina','control_estudio','profesor','estudiante','guarderia','trabajador','monitor'];
+$tipos_validos  = ['superadmin','admin','defensoria','comedor','cocina','control_estudio','profesor','estudiante','guarderia','trabajador','monitor','recepcion'];
 $estatus_validos = ['Pendiente','Activo','Inactivo'];
 
 $where  = [];
@@ -240,10 +240,13 @@ try {
                                     <a href="editar.php?id=<?= $u['id_usuario'] ?>" class="btn btn-sm btn-warning text-dark font-weight-bold mr-1" title="Editar usuario">
                                         <i class="fas fa-edit"></i>
                                     </a>
-                                    <a href="../../imprimir_carnet.php?cedula=<?= urlencode($u['cedula']) ?>" target="_blank" class="btn btn-sm btn-outline-dark font-weight-bold mr-1" title="Imprimir carnet">
+                                    <a href="../../imprimir_carnet.php?id_usuario=<?= (int)$u['id_usuario'] ?>" target="_blank" class="btn btn-sm btn-outline-dark font-weight-bold mr-1" title="Imprimir carnet de <?= htmlspecialchars(trim($u['nombre'] . ' ' . ($u['apellido'] ?? ''))) ?>">
                                         <i class="fas fa-id-card"></i>
                                     </a>
-                                    
+                                    <a href="cambiar_clave.php?id=<?= (int)$u['id_usuario'] ?>" class="btn btn-sm btn-outline-primary font-weight-bold mr-1" title="Cambiar contraseña">
+                                        <i class="fas fa-key"></i>
+                                    </a>
+
                                     <!-- BOTÓN DE BLOQUEAR / ACTIVAR USUARIO -->
                                     <form method="POST" action="index.php" class="d-inline" onsubmit="return confirm('¿Confirma que desea cambiar el estatus de este usuario?')">
                                         <?= csrf_field() ?>

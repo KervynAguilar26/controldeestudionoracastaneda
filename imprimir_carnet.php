@@ -16,8 +16,22 @@ $roles_carnet = $_SESSION['roles_asignados'] ?? [$_SESSION['tipo_usuario'] ?? ''
 $es_admin_carnet = in_array('superadmin', $roles_carnet) || in_array('admin', $roles_carnet)
                  || in_array('control_estudio', $roles_carnet);
 
-$id_u = intval($_GET['id_usuario'] ?? $id_sesion);
-if ($id_u === 0) { die("ID de usuario no válido."); }
+// Se acepta el usuario por id_usuario (Mi QR) o por cédula (gestión de usuarios,
+// aprobación de estudiantes y aula virtual). Si no viene ninguno, se usa la sesión.
+$id_u = intval($_GET['id_usuario'] ?? 0);
+$cedula_param = preg_replace('/[^0-9]/', '', (string)($_GET['cedula'] ?? ''));
+
+if ($id_u === 0 && $cedula_param !== '') {
+    try {
+        $stmt_ced = $pdo->prepare("SELECT id_usuario FROM public.usuarios WHERE regexp_replace(cedula, '[^0-9]', '', 'g') = :ced LIMIT 1");
+        $stmt_ced->execute([':ced' => $cedula_param]);
+        $id_u = intval($stmt_ced->fetchColumn());
+    } catch (Exception $e_ced) {
+        $id_u = 0;
+    }
+}
+
+if ($id_u === 0) { $id_u = $id_sesion; }
 
 if (!$es_admin_carnet && $id_u !== $id_sesion) {
     http_response_code(403);
@@ -93,6 +107,15 @@ try {
     </style>
 </head>
 <body>
+
+    <?php if ($id_u !== $id_sesion): ?>
+        <div class="no-print alert alert-info font-weight-bold" style="margin-bottom: 12px;">
+            <i class="fas fa-info-circle mr-2"></i>Está visualizando el carné de
+            <strong><?= htmlspecialchars(trim(($u['nombre'] ?? '') . ' ' . ($u['apellido'] ?? ''))) ?></strong>
+            (V-<?= htmlspecialchars($u['cedula'] ?? '') ?>).
+            <a href="imprimir_carnet.php" class="alert-link">Ver mi carné</a>
+        </div>
+    <?php endif; ?>
 
     <div class="no-print" style="margin-bottom: 20px;">
         <button onclick="window.print()" class="btn-accion" style="background: #521f29; color: #ffffff;">

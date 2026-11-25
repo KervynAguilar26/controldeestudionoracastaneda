@@ -258,7 +258,7 @@ $prestamos = $pdo->query($sql_pr)->fetchAll();
                     <!-- CHECK LIST DE DISPONIBILIDAD EN TIEMPO REAL -->
                     <div class="card border-0 shadow-sm my-3" style="border-radius: 12px; background-color: #fcf8f2;">
                         <div class="card-header font-weight-bold text-white" style="background-color: #521f29; border-top-left-radius: 12px; border-top-right-radius: 12px;">
-                            <i class="fas fa-tasks mr-2 text-warning"></i> Check List de Salones Disponibles según Días y Horarios
+                            <i class="fas fa-tasks mr-2 text-warning"></i> Check List de Salones según Días y Horarios (franjas exactas)
                         </div>
                         <div class="card-body p-3">
                             <div class="form-row align-items-center mb-3">
@@ -391,23 +391,26 @@ function actualizarChecklistSalones() {
                 const col = document.createElement('div');
                 col.className = 'col-md-6 mb-2';
 
+                const estado = sal.estado || (sal.disponible === false ? 'BLOQUEADO' : 'DESBLOQUEADO');
+                const motivo = sal.motivo || '';
                 if (sal.disponible === false) {
                     col.innerHTML = `
-                        <div class="p-2 border rounded bg-white opacity-50 d-flex justify-content-between align-items-center">
+                        <div class="p-2 border rounded bg-white opacity-75 d-flex justify-content-between align-items-center" style="border-left: 5px solid #dc3545 !important;" title="${motivo.replace(/"/g, '&quot;')}">
                             <div>
-                                <span class="font-weight-bold text-muted"><i class="fas fa-lock text-danger mr-1"></i> ${sal.nombre}</span>
-                                <small class="d-block text-danger font-weight-bold">${sal.motivo}</small>
+                                <span class="font-weight-bold text-dark"><i class="fas fa-lock text-danger mr-1"></i> ${sal.nombre}</span>
+                                <small class="d-block text-danger font-weight-bold">${estado} · ${motivo}</small>
                             </div>
-                            <span class="badge badge-secondary">${sal.capacidad} Cap.</span>
+                            <span class="badge badge-danger font-weight-bold">${sal.capacidad} Cap.</span>
                         </div>
                     `;
                 } else {
                     col.innerHTML = `
-                        <div class="p-2 border rounded bg-white shadow-sm d-flex justify-content-between align-items-center" style="border-left: 5px solid #28a745 !important;">
+                        <div class="p-2 border rounded bg-white shadow-sm d-flex justify-content-between align-items-center" style="border-left: 5px solid #28a745 !important;" title="${motivo.replace(/"/g, '&quot;')}">
                             <div class="custom-control custom-checkbox">
                                 <input type="checkbox" name="salones_seleccionados[]" class="custom-control-input chk-salon-disponible" id="sal_${sal.id_espacio}" value="${sal.nombre}" onchange="sincronizarSalonesSeleccionados()">
                                 <label class="custom-control-label font-weight-bold text-dark" for="sal_${sal.id_espacio}">
                                     ${sal.nombre}
+                                    <small class="d-block text-success font-weight-bold">${estado} · ${motivo}</small>
                                 </label>
                             </div>
                             <span class="badge badge-success font-weight-bold">${sal.capacidad} Cupos</span>
